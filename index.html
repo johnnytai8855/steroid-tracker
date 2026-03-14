@@ -533,6 +533,8 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
               onChange={e => setDrugTime(d.key, e.target.value)}
               style={{background:'var(--card2)',border:'1px solid var(--border)',borderRadius:8,padding:'6px 8px',color:'var(--text)',fontSize:'0.82em',outline:'none',width:90,flexShrink:0}}
               placeholder="時間" />
+            <button onClick={() => { const now = new Date(); setDrugTime(d.key, `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`); }}
+              style={{background:'var(--card2)',border:'1px solid var(--border)',borderRadius:8,padding:'6px 8px',color:'var(--blue)',fontSize:'0.75em',cursor:'pointer',flexShrink:0,whiteSpace:'nowrap'}}>現在</button>
           </div>
         ))}
       </div>
@@ -1055,7 +1057,8 @@ function MorePage({ data, updateData }) {
     dates.forEach(date => {
       const e = data[date];
       const drugs = DRUGS.map(d => e.drugs?.[d.key] || '');
-      const syms = SYMPTOMS.map(s => (e.symptoms||[]).includes(s.key) ? 1 : '');
+      const allSyms = flattenSymptoms(e.symptoms);
+      const syms = SYMPTOMS.map(s => allSyms.includes(s.key) ? 1 : '');
       csv += `${date},${drugs.join(',')},${syms.join(',')},${(e.note||'').replace(/,/g,'；')}\n`;
     });
     const blob = new Blob(['\uFEFF'+csv], { type: 'text/csv;charset=utf-8' });
