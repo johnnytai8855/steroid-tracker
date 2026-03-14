@@ -1,0 +1,1045 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="用藥追蹤">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0f1117">
+<link rel="manifest" href="data:application/json;base64,eyJuYW1lIjoi55So6Jel6L+96LmkIiwic2hvcnRfbmFtZSI6IueLgOiol+i/veiYpSIsInN0YXJ0X3VybCI6Ii4vIiwiZGlzcGxheSI6InN0YW5kYWxvbmUiLCJiYWNrZ3JvdW5kX2NvbG9yIjoiIzBmMTExNyIsInRoZW1lX2NvbG9yIjoiIzBmMTExNyIsImljb25zIjpbeyJzcmMiOiJkYXRhOmltYWdlL3N2Zyt4bWw7YmFzZTY0LFBITjJaeUI0Yld4dWN6MGlhSFIwY0RvdkwzZDNkeTUzTXk1dmNtY3ZNakF3TUM5emRtY2lJSFpwWlhkQ2IzZzlJakFnTUNBeE1qZ2dNVEk0SWo0OFkybHlZMnhsSUdONFBTSTJOQ0lnWTNrOUlqWTBJaUJ5UFNJMU5DSWdabWxzYkQwaUl6WXdZVFZtWVNJdlBqeDBaWGgwSUhnOUlqWTBJaUI1UFNJM01pSWdkR1Y0ZEMxaGJtTm9iM0k5SW0xcFpHUnNaU0lnWm05dWRDMXphWHBsUFNJek5pSWdabWxzYkQwaWQyaHBkR1VpUGp3dGx2d3Z6YUV0ZER4dmRHVjRkRDQ4TDNOMlp6ND0iLCJzaXplcyI6IjEyOHgxMjgiLCJ0eXBlIjoiaW1hZ2Uvc3ZnK3htbCJ9XX0=">
+<title>用藥與症狀追蹤</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{--bg:#0f1117;--card:#1a1d28;--card2:#22263a;--border:#2a2d38;--blue:#60a5fa;--pink:#f472b6;--green:#34d399;--purple:#a78bfa;--orange:#fb923c;--red:#ef4444;--text:#e0e0e0;--text2:#999;--radius:12px}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding-bottom:80px}
+.header{background:var(--card);padding:16px 20px;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between}
+.header h1{font-size:1.15em;color:var(--blue)}
+.tabs{display:flex;position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--border);z-index:100;padding:6px 0 env(safe-area-inset-bottom)}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;padding:8px 4px;color:var(--text2);font-size:0.7em;cursor:pointer;border:none;background:none;transition:color 0.2s}
+.tab.active{color:var(--blue)}
+.tab svg{width:22px;height:22px;margin-bottom:3px}
+.page{padding:16px;max-width:600px;margin:0 auto}
+.card{background:var(--card);border-radius:var(--radius);padding:16px;margin-bottom:14px;border:1px solid var(--border)}
+.card h3{color:var(--blue);font-size:0.95em;margin-bottom:12px}
+.drug-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.drug-label{min-width:100px;font-size:0.88em;color:var(--text2)}
+.drug-input{flex:1;background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-size:1em;outline:none;width:100%}
+.drug-input:focus{border-color:var(--blue)}
+.drug-unit{font-size:0.8em;color:var(--text2);min-width:30px}
+.sym-grid{display:flex;flex-wrap:wrap;gap:8px}
+.sym-btn{padding:8px 14px;border-radius:20px;border:1px solid var(--border);background:var(--card2);color:var(--text2);font-size:0.85em;cursor:pointer;transition:all 0.2s;user-select:none}
+.sym-btn.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+.sym-btn.positive.active{background:var(--green);border-color:var(--green)}
+.sym-btn.negative.active{background:var(--red);border-color:var(--red)}
+.date-nav{display:flex;align-items:center;justify-content:center;gap:16px;margin-bottom:16px}
+.date-nav button{background:var(--card2);border:1px solid var(--border);color:var(--text);padding:8px 14px;border-radius:8px;cursor:pointer;font-size:0.9em}
+.date-nav button:active{background:var(--blue);color:#fff}
+.date-nav .date{font-size:1.1em;font-weight:600;color:var(--blue);min-width:140px;text-align:center}
+.save-btn{width:100%;padding:14px;background:var(--blue);color:#fff;border:none;border-radius:10px;font-size:1em;font-weight:600;cursor:pointer;margin-top:8px;transition:opacity 0.2s}
+.save-btn:active{opacity:0.7}
+.save-btn.saved{background:var(--green)}
+.note-input{width:100%;background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-size:0.9em;outline:none;resize:vertical;min-height:60px;font-family:inherit}
+.note-input:focus{border-color:var(--blue)}
+/* Calendar */
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;font-size:0.78em}
+.cal-header{text-align:center;color:var(--text2);padding:6px 0;font-weight:600}
+.cal-day{background:var(--card2);border-radius:6px;padding:4px;min-height:52px;cursor:pointer;border:2px solid transparent;transition:border-color 0.2s;position:relative}
+.cal-day:hover{border-color:var(--blue)}
+.cal-day.today{border-color:var(--blue)}
+.cal-day.selected{border-color:var(--orange)}
+.cal-day.empty{background:transparent;cursor:default;border:none}
+.cal-day .num{font-weight:600;margin-bottom:2px}
+.cal-day .dots{display:flex;flex-wrap:wrap;gap:2px}
+.cal-day .dot{width:6px;height:6px;border-radius:50%}
+.cal-month{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.cal-month button{background:none;border:none;color:var(--blue);font-size:1.2em;cursor:pointer;padding:8px}
+.cal-month .month-label{font-size:1em;font-weight:600}
+/* Chart */
+.chart-container{position:relative;height:280px;margin:8px 0}
+/* History */
+.hist-item{padding:12px 0;border-bottom:1px solid var(--border)}
+.hist-date{font-weight:600;color:var(--blue);margin-bottom:6px}
+.hist-drugs{font-size:0.85em;color:var(--green);margin-bottom:4px}
+.hist-symptoms{font-size:0.85em;color:var(--orange);margin-bottom:4px}
+.hist-note{font-size:0.82em;color:var(--text2);font-style:italic}
+/* Export */
+.action-btn{display:block;width:100%;padding:12px;margin-bottom:10px;background:var(--card2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:0.9em;cursor:pointer;text-align:center}
+.action-btn:active{background:var(--blue);color:#fff}
+.badge{position:absolute;top:2px;right:2px;width:8px;height:8px;border-radius:50%;background:var(--blue)}
+/* Photo */
+.photo-section{display:flex;gap:12px;flex-wrap:wrap}
+.photo-slot{flex:1;min-width:140px}
+.photo-slot h4{font-size:0.85em;color:var(--text2);margin-bottom:8px;text-align:center}
+.photo-frame{position:relative;width:100%;aspect-ratio:3/4;background:var(--card2);border:2px dashed var(--border);border-radius:10px;overflow:hidden;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.photo-frame.has-photo{border-style:solid;border-color:var(--purple)}
+.photo-frame img{width:100%;height:100%;object-fit:cover}
+.photo-frame .placeholder{text-align:center;color:var(--text2);font-size:0.8em;padding:10px}
+.photo-frame .placeholder svg{width:32px;height:32px;margin-bottom:4px;opacity:0.5}
+.photo-frame .remove-photo{position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.7);color:#fff;border:none;border-radius:50%;width:24px;height:24px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.photo-input{display:none}
+/* AI Analysis */
+.ai-card{background:linear-gradient(135deg,#1a1d28,#22263a);border:1px solid var(--purple);border-radius:var(--radius);padding:16px;margin-bottom:14px}
+.ai-card h3{color:var(--purple);font-size:0.95em;margin-bottom:12px}
+.metric-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:0.85em}
+.metric-bar{width:100px;height:8px;background:var(--card2);border-radius:4px;overflow:hidden}
+.metric-fill{height:100%;border-radius:4px;transition:width 0.3s}
+/* Photo Compare */
+.compare-container{display:flex;gap:8px;overflow-x:auto;padding:8px 0}
+.compare-card{min-width:120px;flex-shrink:0;text-align:center}
+.compare-card img{width:120px;height:160px;object-fit:cover;border-radius:8px;border:2px solid var(--border)}
+.compare-card .compare-date{font-size:0.75em;color:var(--text2);margin-top:4px}
+.compare-card .compare-score{font-size:0.7em;color:var(--purple);margin-top:2px}
+.storage-warn{background:var(--card2);border:1px solid var(--orange);border-radius:8px;padding:10px;margin-bottom:14px;font-size:0.82em;color:var(--orange)}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef, useMemo, useCallback } = React;
+
+const DRUGS = [
+  { key: 'sus', label: 'Sustanon', unit: 'ml', color: '#60a5fa' },
+  { key: 'mast', label: 'Masteron', unit: 'mg', color: '#f472b6' },
+  { key: 'primo', label: 'Primobolan', unit: 'mg', color: '#34d399' },
+  { key: 'cyp', label: 'Test Cypionate', unit: 'mg', color: '#a78bfa' },
+  { key: 'hcg', label: 'HCG', unit: 'mcg', color: '#c084fc' },
+  { key: 'ai', label: 'Aromasin', unit: '片', color: '#fb923c' },
+  { key: 'cere', label: 'Cerebrolysin', unit: 'mg', color: '#22d3ee' },
+];
+
+const SYMPTOMS = [
+  { key: 'face_swollen', label: '臉腫', type: 'negative' },
+  { key: 'edema', label: '水腫/脹氣', type: 'negative' },
+  { key: 'brain_fog', label: '腦霧', type: 'negative' },
+  { key: 'muscle_flat', label: '肌肉Flat', type: 'negative' },
+  { key: 'fatigue', label: '疲累', type: 'negative' },
+  { key: 'mood_bad', label: '心情差', type: 'negative' },
+  { key: 'joint_stiff', label: '關節卡', type: 'negative' },
+  { key: 'libido_down', label: '性功能↓', type: 'negative' },
+  { key: 'stomach', label: '胃痛', type: 'negative' },
+  { key: 'neck_tight', label: '脖子緊', type: 'negative' },
+  { key: 'muscle_pump', label: '肌肉Pump', type: 'positive' },
+  { key: 'libido_up', label: '性功能正常', type: 'positive' },
+  { key: 'morning_e', label: '晨勃', type: 'positive' },
+  { key: 'skin_good', label: '皮膚好', type: 'positive' },
+  { key: 'mood_good', label: '心情好', type: 'positive' },
+  { key: 'e2_high', label: 'E2偏高感', type: 'negative' },
+  { key: 'horny', label: '很春', type: 'positive' },
+];
+
+const fmt = d => d.toISOString().slice(0, 10);
+const today = () => fmt(new Date());
+const parseDate = s => { const [y,m,d] = s.split('-'); return new Date(y, m-1, d); };
+
+// Data store - text data in one key, photos in separate keys
+const loadData = () => {
+  try { return JSON.parse(localStorage.getItem('steroid_tracker') || '{}'); } catch { return {}; }
+};
+const saveData = data => localStorage.setItem('steroid_tracker', JSON.stringify(data));
+
+// Photo storage: separate keys to avoid hitting single-key size limits
+const loadPhoto = (date, type) => {
+  try { return localStorage.getItem(`photo_${date}_${type}`) || null; } catch { return null; }
+};
+const savePhoto = (date, type, dataUrl) => {
+  if (dataUrl) localStorage.setItem(`photo_${date}_${type}`, dataUrl);
+  else localStorage.removeItem(`photo_${date}_${type}`);
+};
+const getStorageUsage = () => {
+  let total = 0;
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    total += localStorage.getItem(key).length * 2; // UTF-16
+  }
+  return total;
+};
+
+// Compress image to target width, return base64 JPEG
+const compressImage = (file, maxWidth = 480, quality = 0.6) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let w = img.width, h = img.height;
+        if (w > maxWidth) { h = (maxWidth / w) * h; w = maxWidth; }
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+};
+
+// AI Analysis: compute face/body metrics from image
+const analyzePhoto = (dataUrl) => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const size = 200;
+      let w = img.width, h = img.height;
+      if (w > h) { h = (size / w) * h; w = size; } else { w = (size / h) * w; h = size; }
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      const imageData = ctx.getImageData(0, 0, w, h);
+      const pixels = imageData.data;
+      let totalR = 0, totalG = 0, totalB = 0, totalBright = 0;
+      let skinPixels = 0, rednessSum = 0;
+      const n = pixels.length / 4;
+
+      for (let i = 0; i < pixels.length; i += 4) {
+        const r = pixels[i], g = pixels[i+1], b = pixels[i+2];
+        const brightness = (0.299 * r + 0.587 * g + 0.114 * b);
+        totalR += r; totalG += g; totalB += b;
+        totalBright += brightness;
+        // Skin detection (simplified)
+        if (r > 80 && g > 40 && b > 20 && r > g && r > b && (r - g) > 10 && brightness > 50 && brightness < 230) {
+          skinPixels++;
+          rednessSum += (r - g) / 255;
+        }
+      }
+
+      const avgBright = totalBright / n;
+      const avgR = totalR / n, avgG = totalG / n, avgB = totalB / n;
+      const skinRatio = skinPixels / n;
+      const avgRedness = skinPixels > 0 ? rednessSum / skinPixels : 0;
+
+      // Swelling indicators (higher = more swelling-like)
+      // Puffy faces tend to be: brighter skin, more redness, higher skin area ratio
+      const brightnessScore = Math.min(100, (avgBright / 180) * 100);
+      const rednessScore = Math.min(100, avgRedness * 300);
+      const puffScore = Math.min(100, skinRatio * 200);
+      const swellingIndex = Math.round((brightnessScore * 0.3 + rednessScore * 0.4 + puffScore * 0.3));
+
+      // Warmth (color temperature)
+      const warmth = Math.round(((avgR - avgB) / 255) * 100 + 50);
+
+      resolve({
+        brightness: Math.round(brightnessScore),
+        redness: Math.round(rednessScore),
+        swellingIndex: Math.min(100, swellingIndex),
+        warmth: Math.min(100, Math.max(0, warmth)),
+        skinRatio: Math.round(skinRatio * 100),
+      });
+    };
+    img.src = dataUrl;
+  });
+};
+
+function App() {
+  const [tab, setTab] = useState('record');
+  const [data, setData] = useState(loadData);
+  const [selectedDate, setSelectedDate] = useState(today());
+  const [calMonth, setCalMonth] = useState(() => { const d = new Date(); return [d.getFullYear(), d.getMonth()]; });
+  const [saveStatus, setSaveStatus] = useState('');
+
+  const updateData = useCallback((newData) => {
+    setData(newData);
+    saveData(newData);
+  }, []);
+
+  // Icons
+  const RecordIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>;
+  const CalIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>;
+  const ChartIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>;
+  const MoreIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>;
+
+  return (
+    <>
+      <div className="header">
+        <h1>💉 用藥追蹤</h1>
+        <span style={{color:'var(--text2)',fontSize:'0.85em'}}>{selectedDate}</span>
+      </div>
+
+      {tab === 'record' && <RecordPage data={data} updateData={updateData} selectedDate={selectedDate} setSelectedDate={setSelectedDate} saveStatus={saveStatus} setSaveStatus={setSaveStatus} />}
+      {tab === 'calendar' && <CalendarPage data={data} calMonth={calMonth} setCalMonth={setCalMonth} selectedDate={selectedDate} setSelectedDate={setSelectedDate} setTab={setTab} />}
+      {tab === 'chart' && <ChartPage data={data} />}
+      {tab === 'more' && <MorePage data={data} updateData={updateData} />}
+
+      <div className="tabs">
+        <button className={`tab ${tab==='record'?'active':''}`} onClick={()=>setTab('record')}><RecordIcon />紀錄</button>
+        <button className={`tab ${tab==='calendar'?'active':''}`} onClick={()=>setTab('calendar')}><CalIcon />日曆</button>
+        <button className={`tab ${tab==='chart'?'active':''}`} onClick={()=>setTab('chart')}><ChartIcon />分析</button>
+        <button className={`tab ${tab==='more'?'active':''}`} onClick={()=>setTab('more')}><MoreIcon />更多</button>
+      </div>
+    </>
+  );
+}
+
+function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatus, setSaveStatus }) {
+  const entry = data[selectedDate] || { drugs: {}, symptoms: [], note: '' };
+  const [drugs, setDrugs] = useState(entry.drugs);
+  const [symptoms, setSymptoms] = useState(entry.symptoms || []);
+  const [note, setNote] = useState(entry.note || '');
+  const [facePhoto, setFacePhoto] = useState(null);
+  const [bodyPhoto, setBodyPhoto] = useState(null);
+  const [faceAnalysis, setFaceAnalysis] = useState(null);
+  const [bodyAnalysis, setBodyAnalysis] = useState(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const faceInputRef = useRef(null);
+  const bodyInputRef = useRef(null);
+
+  useEffect(() => {
+    const e = data[selectedDate] || { drugs: {}, symptoms: [], note: '' };
+    setDrugs(e.drugs || {});
+    setSymptoms(e.symptoms || []);
+    setNote(e.note || '');
+    setSaveStatus('');
+    // Load photos for this date
+    const fp = loadPhoto(selectedDate, 'face');
+    const bp = loadPhoto(selectedDate, 'body');
+    setFacePhoto(fp);
+    setBodyPhoto(bp);
+    setFaceAnalysis(null);
+    setBodyAnalysis(null);
+    // Auto-analyze if photos exist
+    if (fp) analyzePhoto(fp).then(setFaceAnalysis);
+    if (bp) analyzePhoto(bp).then(setBodyAnalysis);
+  }, [selectedDate, data]);
+
+  const changeDate = delta => {
+    const d = parseDate(selectedDate);
+    d.setDate(d.getDate() + delta);
+    setSelectedDate(fmt(d));
+  };
+
+  const setDrug = (key, val) => setDrugs(prev => ({ ...prev, [key]: val }));
+  const toggleSymptom = key => setSymptoms(prev => prev.includes(key) ? prev.filter(s => s !== key) : [...prev, key]);
+
+  const handlePhoto = async (e, type) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setAnalyzing(true);
+    try {
+      const compressed = await compressImage(file, 480, 0.6);
+      if (type === 'face') {
+        setFacePhoto(compressed);
+        savePhoto(selectedDate, 'face', compressed);
+        const analysis = await analyzePhoto(compressed);
+        setFaceAnalysis(analysis);
+        // Save analysis in data
+        const newData = { ...data };
+        if (!newData[selectedDate]) newData[selectedDate] = { drugs: {}, symptoms: [], note: '' };
+        newData[selectedDate].faceAnalysis = analysis;
+        newData[selectedDate].hasPhotos = true;
+        updateData(newData);
+      } else {
+        setBodyPhoto(compressed);
+        savePhoto(selectedDate, 'body', compressed);
+        const analysis = await analyzePhoto(compressed);
+        setBodyAnalysis(analysis);
+        const newData = { ...data };
+        if (!newData[selectedDate]) newData[selectedDate] = { drugs: {}, symptoms: [], note: '' };
+        newData[selectedDate].bodyAnalysis = analysis;
+        newData[selectedDate].hasPhotos = true;
+        updateData(newData);
+      }
+    } catch (err) { console.error('Photo error:', err); }
+    setAnalyzing(false);
+  };
+
+  const removePhoto = (type) => {
+    if (type === 'face') { setFacePhoto(null); setFaceAnalysis(null); savePhoto(selectedDate, 'face', null); }
+    else { setBodyPhoto(null); setBodyAnalysis(null); savePhoto(selectedDate, 'body', null); }
+    const newData = { ...data };
+    if (newData[selectedDate]) {
+      if (type === 'face') delete newData[selectedDate].faceAnalysis;
+      else delete newData[selectedDate].bodyAnalysis;
+      const hasFace = type === 'face' ? false : !!loadPhoto(selectedDate, 'face');
+      const hasBody = type === 'body' ? false : !!loadPhoto(selectedDate, 'body');
+      newData[selectedDate].hasPhotos = hasFace || hasBody;
+      updateData(newData);
+    }
+  };
+
+  const handleSave = () => {
+    const cleanDrugs = {};
+    Object.entries(drugs).forEach(([k, v]) => { if (v && parseFloat(v) > 0) cleanDrugs[k] = parseFloat(v); });
+    const existing = data[selectedDate] || {};
+    const newData = { ...data, [selectedDate]: { ...existing, drugs: cleanDrugs, symptoms, note, updatedAt: new Date().toISOString() } };
+    if (!symptoms.length && !Object.keys(cleanDrugs).length && !note && !existing.hasPhotos) delete newData[selectedDate];
+    updateData(newData);
+    setSaveStatus('saved');
+    setTimeout(() => setSaveStatus(''), 1500);
+  };
+
+  const isToday = selectedDate === today();
+  const dayOfWeek = ['日','一','二','三','四','五','六'][parseDate(selectedDate).getDay()];
+
+  // Storage usage
+  const storageBytes = useMemo(() => getStorageUsage(), [facePhoto, bodyPhoto, data]);
+  const storageMB = (storageBytes / 1024 / 1024).toFixed(1);
+  const storageWarn = storageBytes > 4 * 1024 * 1024;
+
+  const MetricBar = ({ label, value, color }) => (
+    <div className="metric-row">
+      <span style={{color:'var(--text2)'}}>{label}</span>
+      <div style={{display:'flex',alignItems:'center',gap:8}}>
+        <div className="metric-bar">
+          <div className="metric-fill" style={{width:`${value}%`, background: color}} />
+        </div>
+        <span style={{minWidth:30,textAlign:'right',color}}>{value}</span>
+      </div>
+    </div>
+  );
+
+  const AnalysisCard = ({ title, analysis }) => {
+    if (!analysis) return null;
+    const level = analysis.swellingIndex < 30 ? '正常' : analysis.swellingIndex < 55 ? '輕微' : analysis.swellingIndex < 75 ? '偏高' : '明顯';
+    const levelColor = analysis.swellingIndex < 30 ? 'var(--green)' : analysis.swellingIndex < 55 ? 'var(--blue)' : analysis.swellingIndex < 75 ? 'var(--orange)' : 'var(--red)';
+    return (
+      <div className="ai-card">
+        <h3>🤖 {title} AI 分析</h3>
+        <div style={{textAlign:'center',marginBottom:12}}>
+          <div style={{fontSize:'2em',fontWeight:700,color:levelColor}}>{analysis.swellingIndex}</div>
+          <div style={{fontSize:'0.85em',color:levelColor}}>腫脹指數 — {level}</div>
+        </div>
+        <MetricBar label="亮度" value={analysis.brightness} color="var(--blue)" />
+        <MetricBar label="泛紅" value={analysis.redness} color="var(--red)" />
+        <MetricBar label="膚色佔比" value={analysis.skinRatio} color="var(--orange)" />
+        <MetricBar label="色溫" value={analysis.warmth} color="var(--pink)" />
+      </div>
+    );
+  };
+
+  return (
+    <div className="page">
+      <div className="date-nav">
+        <button onClick={() => changeDate(-1)}>◀ 前一天</button>
+        <div className="date">{selectedDate.slice(5)} ({dayOfWeek}){isToday && ' 📍'}</div>
+        <button onClick={() => changeDate(1)}>後一天 ▶</button>
+      </div>
+
+      {storageWarn && (
+        <div className="storage-warn">⚠️ 儲存空間已用 {storageMB}MB，接近上限。建議匯出備份後清理舊照片。</div>
+      )}
+
+      <div className="card">
+        <h3>📸 臉部 & 身材照</h3>
+        <div className="photo-section">
+          <div className="photo-slot">
+            <h4>臉部</h4>
+            <div className={`photo-frame ${facePhoto?'has-photo':''}`} onClick={() => !facePhoto && faceInputRef.current?.click()}>
+              {facePhoto ? (
+                <>
+                  <img src={facePhoto} alt="臉部" />
+                  <button className="remove-photo" onClick={e => { e.stopPropagation(); removePhoto('face'); }}>✕</button>
+                </>
+              ) : (
+                <div className="placeholder">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                  <div>點擊拍攝臉部照</div>
+                </div>
+              )}
+            </div>
+            <input ref={faceInputRef} className="photo-input" type="file" accept="image/*" capture="user"
+              onChange={e => handlePhoto(e, 'face')} />
+          </div>
+          <div className="photo-slot">
+            <h4>身材</h4>
+            <div className={`photo-frame ${bodyPhoto?'has-photo':''}`} onClick={() => !bodyPhoto && bodyInputRef.current?.click()}>
+              {bodyPhoto ? (
+                <>
+                  <img src={bodyPhoto} alt="身材" />
+                  <button className="remove-photo" onClick={e => { e.stopPropagation(); removePhoto('body'); }}>✕</button>
+                </>
+              ) : (
+                <div className="placeholder">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                  <div>點擊拍攝身材照</div>
+                </div>
+              )}
+            </div>
+            <input ref={bodyInputRef} className="photo-input" type="file" accept="image/*" capture="environment"
+              onChange={e => handlePhoto(e, 'body')} />
+          </div>
+        </div>
+        {analyzing && <p style={{textAlign:'center',color:'var(--purple)',marginTop:8,fontSize:'0.85em'}}>🔄 分析中...</p>}
+        <p style={{fontSize:'0.72em',color:'var(--text2)',marginTop:8,textAlign:'center'}}>
+          儲存空間：{storageMB} MB / ~5 MB
+        </p>
+      </div>
+
+      {(faceAnalysis || bodyAnalysis) && (
+        <>
+          {faceAnalysis && <AnalysisCard title="臉部" analysis={faceAnalysis} />}
+          {bodyAnalysis && <AnalysisCard title="身材" analysis={bodyAnalysis} />}
+        </>
+      )}
+
+      <div className="card">
+        <h3>💊 藥物劑量</h3>
+        {DRUGS.map(d => (
+          <div className="drug-row" key={d.key}>
+            <div className="drug-label" style={{color: d.color}}>{d.label}</div>
+            <input className="drug-input" type="number" step="any" placeholder="0"
+              value={drugs[d.key] || ''} onChange={e => setDrug(d.key, e.target.value)}
+              inputMode="decimal" />
+            <div className="drug-unit">{d.unit}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="card">
+        <h3>📋 症狀紀錄</h3>
+        <div className="sym-grid">
+          {SYMPTOMS.map(s => (
+            <button key={s.key} className={`sym-btn ${s.type} ${symptoms.includes(s.key)?'active':''}`}
+              onClick={() => toggleSymptom(s.key)}>
+              {s.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="card">
+        <h3>📝 備註</h3>
+        <textarea className="note-input" placeholder="其他觀察、感受..."
+          value={note} onChange={e => setNote(e.target.value)} />
+      </div>
+
+      <button className={`save-btn ${saveStatus}`} onClick={handleSave}>
+        {saveStatus === 'saved' ? '✓ 已儲存' : '儲存紀錄'}
+      </button>
+    </div>
+  );
+}
+
+function CalendarPage({ data, calMonth, setCalMonth, selectedDate, setSelectedDate, setTab }) {
+  const [year, month] = calMonth;
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const todayStr = today();
+
+  const prevMonth = () => setCalMonth(month === 0 ? [year-1, 11] : [year, month-1]);
+  const nextMonth = () => setCalMonth(month === 11 ? [year+1, 0] : [year, month+1]);
+
+  const days = [];
+  for (let i = 0; i < firstDay; i++) days.push(null);
+  for (let d = 1; d <= daysInMonth; d++) days.push(d);
+
+  const clickDay = d => {
+    const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    setSelectedDate(dateStr);
+    setTab('record');
+  };
+
+  return (
+    <div className="page">
+      <div className="cal-month">
+        <button onClick={prevMonth}>◀</button>
+        <div className="month-label">{year}年 {month+1}月</div>
+        <button onClick={nextMonth}>▶</button>
+      </div>
+      <div className="cal-grid">
+        {['日','一','二','三','四','五','六'].map(d => <div className="cal-header" key={d}>{d}</div>)}
+        {days.map((d, i) => {
+          if (!d) return <div className="cal-day empty" key={`e${i}`} />;
+          const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+          const entry = data[dateStr];
+          const hasDrugs = entry && Object.keys(entry.drugs || {}).length > 0;
+          const hasSymptoms = entry && (entry.symptoms || []).length > 0;
+          const isToday = dateStr === todayStr;
+          const isSel = dateStr === selectedDate;
+          const negSymptoms = (entry?.symptoms || []).filter(s => SYMPTOMS.find(x=>x.key===s)?.type === 'negative');
+          const posSymptoms = (entry?.symptoms || []).filter(s => SYMPTOMS.find(x=>x.key===s)?.type === 'positive');
+          return (
+            <div className={`cal-day ${isToday?'today':''} ${isSel?'selected':''}`} key={d} onClick={() => clickDay(d)}>
+              <div className="num">{d}</div>
+              <div className="dots">
+                {hasDrugs && <div className="dot" style={{background:'var(--blue)'}} />}
+                {negSymptoms.length > 0 && <div className="dot" style={{background:'var(--red)'}} />}
+                {posSymptoms.length > 0 && <div className="dot" style={{background:'var(--green)'}} />}
+                {entry?.hasPhotos && <div className="dot" style={{background:'var(--purple)'}} />}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{marginTop:12,display:'flex',gap:16,justifyContent:'center',fontSize:'0.78em',color:'var(--text2)'}}>
+        <span><span className="dot" style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:'var(--blue)',marginRight:4,verticalAlign:'middle'}} />有用藥</span>
+        <span><span className="dot" style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:'var(--red)',marginRight:4,verticalAlign:'middle'}} />有負面症狀</span>
+        <span><span className="dot" style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:'var(--green)',marginRight:4,verticalAlign:'middle'}} />有正面反應</span>
+        <span><span className="dot" style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:'var(--purple)',marginRight:4,verticalAlign:'middle'}} />有照片</span>
+      </div>
+
+      {/* Recent entries */}
+      <div className="card" style={{marginTop:16}}>
+        <h3>最近紀錄</h3>
+        {Object.keys(data).sort().reverse().slice(0, 10).map(date => {
+          const e = data[date];
+          const drugStr = Object.entries(e.drugs||{}).map(([k,v]) => `${DRUGS.find(d=>d.key===k)?.label||k} ${v}${DRUGS.find(d=>d.key===k)?.unit||''}`).join(', ');
+          const symStr = (e.symptoms||[]).map(s => SYMPTOMS.find(x=>x.key===s)?.label||s).join(', ');
+          if (!drugStr && !symStr) return null;
+          return (
+            <div className="hist-item" key={date} onClick={() => { setSelectedDate(date); setTab('record'); }} style={{cursor:'pointer'}}>
+              <div className="hist-date">{date} ({['日','一','二','三','四','五','六'][parseDate(date).getDay()]})</div>
+              {drugStr && <div className="hist-drugs">💊 {drugStr}</div>}
+              {symStr && <div className="hist-symptoms">📋 {symStr}</div>}
+              {e.note && <div className="hist-note">📝 {e.note}</div>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ChartPage({ data }) {
+  const chartRef1 = useRef(null);
+  const chartRef2 = useRef(null);
+  const chart1 = useRef(null);
+  const chart2 = useRef(null);
+
+  const sortedDates = useMemo(() => Object.keys(data).sort(), [data]);
+
+  useEffect(() => {
+    if (!sortedDates.length) return;
+
+    // Weekly aggregation
+    const weekly = {};
+    sortedDates.forEach(date => {
+      const d = parseDate(date);
+      const weekStart = new Date(d);
+      weekStart.setDate(d.getDate() - d.getDay());
+      const wk = fmt(weekStart);
+      if (!weekly[wk]) weekly[wk] = { drugs: {}, symptoms: {} };
+      const entry = data[date];
+      Object.entries(entry.drugs || {}).forEach(([k, v]) => {
+        weekly[wk].drugs[k] = (weekly[wk].drugs[k] || 0) + v;
+      });
+      (entry.symptoms || []).forEach(s => {
+        weekly[wk].symptoms[s] = (weekly[wk].symptoms[s] || 0) + 1;
+      });
+    });
+
+    const weeks = Object.keys(weekly).sort();
+    if (!weeks.length) return;
+
+    // Drug chart
+    if (chart1.current) chart1.current.destroy();
+    chart1.current = new Chart(chartRef1.current, {
+      type: 'line',
+      data: {
+        labels: weeks,
+        datasets: DRUGS.filter(d => weeks.some(w => weekly[w].drugs[d.key])).map(d => ({
+          label: d.label,
+          data: weeks.map(w => weekly[w].drugs[d.key] || 0),
+          borderColor: d.color,
+          backgroundColor: d.color + '15',
+          fill: true, tension: 0.3, pointRadius: 2
+        }))
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: '#ccc', font: { size: 10 } } } },
+        scales: {
+          x: { ticks: { color: '#888', maxTicksLimit: 8 }, grid: { color: '#222' } },
+          y: { ticks: { color: '#888' }, grid: { color: '#222' } }
+        }
+      }
+    });
+
+    // Symptom chart
+    const negSymptoms = SYMPTOMS.filter(s => s.type === 'negative' && weeks.some(w => weekly[w].symptoms[s.key]));
+    const colors = ['#ef4444','#f97316','#eab308','#22c55e','#14b8a6','#6366f1','#a855f7','#f43f5e','#84cc16','#fb923c'];
+    if (chart2.current) chart2.current.destroy();
+    chart2.current = new Chart(chartRef2.current, {
+      type: 'bar',
+      data: {
+        labels: weeks,
+        datasets: negSymptoms.map((s, i) => ({
+          label: s.label,
+          data: weeks.map(w => weekly[w].symptoms[s.key] || 0),
+          backgroundColor: (colors[i % colors.length]) + '88',
+          borderColor: colors[i % colors.length],
+          borderWidth: 1
+        }))
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: '#ccc', font: { size: 10 } } } },
+        scales: {
+          x: { stacked: true, ticks: { color: '#888', maxTicksLimit: 8 }, grid: { color: '#222' } },
+          y: { stacked: true, ticks: { color: '#888' }, grid: { color: '#222' } }
+        }
+      }
+    });
+
+    return () => {
+      if (chart1.current) chart1.current.destroy();
+      if (chart2.current) chart2.current.destroy();
+    };
+  }, [data, sortedDates]);
+
+  // Correlation analysis
+  const correlations = useMemo(() => {
+    if (sortedDates.length < 7) return null;
+    const results = {};
+    SYMPTOMS.filter(s => s.type === 'negative').forEach(sym => {
+      const withDoses = {};
+      const withoutDoses = {};
+      DRUGS.forEach(drug => { withDoses[drug.key] = []; withoutDoses[drug.key] = []; });
+
+      sortedDates.forEach((date, i) => {
+        const entry = data[date];
+        const hasSymptom = (entry.symptoms || []).includes(sym.key);
+        // 3-day lookback
+        DRUGS.forEach(drug => {
+          let total = 0, count = 0;
+          for (let j = Math.max(0, i-2); j <= i; j++) {
+            const d2 = data[sortedDates[j]];
+            total += (d2?.drugs?.[drug.key]) || 0;
+            count++;
+          }
+          const avg = count ? total / count : 0;
+          if (hasSymptom) withDoses[drug.key].push(avg);
+          else withoutDoses[drug.key].push(avg);
+        });
+      });
+
+      DRUGS.forEach(drug => {
+        const w = withDoses[drug.key];
+        const wo = withoutDoses[drug.key];
+        if (w.length >= 2 && wo.length >= 2) {
+          const wAvg = w.reduce((a,b)=>a+b,0)/w.length;
+          const woAvg = wo.reduce((a,b)=>a+b,0)/wo.length;
+          const diff = wAvg - woAvg;
+          if (Math.abs(diff) > 0.5) {
+            if (!results[sym.key]) results[sym.key] = { label: sym.label, drugs: [] };
+            results[sym.key].drugs.push({
+              drug: drug.label, diff: diff.toFixed(1), withAvg: wAvg.toFixed(1), withoutAvg: woAvg.toFixed(1), n: w.length
+            });
+          }
+        }
+      });
+    });
+    return results;
+  }, [data, sortedDates]);
+
+  const totalDays = sortedDates.length;
+
+  return (
+    <div className="page">
+      <div className="card">
+        <h3>📊 每週藥物劑量趨勢</h3>
+        {totalDays < 3 ? <p style={{color:'var(--text2)',fontSize:'0.9em'}}>需要至少 3 天資料才能顯示圖表</p> :
+        <div className="chart-container"><canvas ref={chartRef1}></canvas></div>}
+      </div>
+
+      <div className="card">
+        <h3>📊 每週負面症狀頻率</h3>
+        {totalDays < 3 ? <p style={{color:'var(--text2)',fontSize:'0.9em'}}>需要至少 3 天資料才能顯示圖表</p> :
+        <div className="chart-container"><canvas ref={chartRef2}></canvas></div>}
+      </div>
+
+      {correlations && Object.keys(correlations).length > 0 && (
+        <div className="card">
+          <h3>🔍 劑量與症狀關聯分析</h3>
+          <p style={{color:'var(--text2)',fontSize:'0.8em',marginBottom:12}}>比較出現症狀時 vs 無症狀時，前3天的平均劑量差異</p>
+          {Object.values(correlations).map(corr => (
+            <div key={corr.label} style={{marginBottom:16}}>
+              <div style={{fontWeight:600,color:'var(--orange)',marginBottom:6}}>{corr.label}</div>
+              {corr.drugs.map(d => (
+                <div key={d.drug} style={{fontSize:'0.85em',padding:'4px 0',display:'flex',justifyContent:'space-between'}}>
+                  <span>{d.drug}</span>
+                  <span style={{color: parseFloat(d.diff) > 0 ? 'var(--red)' : 'var(--green)'}}>
+                    {parseFloat(d.diff) > 0 ? '↑' : '↓'} {d.diff} (有:{d.withAvg} vs 無:{d.withoutAvg}, n={d.n})
+                  </span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Photo Comparison Timeline */}
+      <PhotoTimeline data={data} sortedDates={sortedDates} />
+
+      <div className="card">
+        <h3>📈 統計摘要</h3>
+        <div style={{fontSize:'0.88em'}}>
+          <p>總紀錄天數：<b>{totalDays}</b></p>
+          {totalDays > 0 && (
+            <p>紀錄範圍：{sortedDates[0]} ~ {sortedDates[sortedDates.length-1]}</p>
+          )}
+          {DRUGS.map(drug => {
+            const days = sortedDates.filter(d => data[d]?.drugs?.[drug.key]);
+            const total = days.reduce((sum, d) => sum + (data[d].drugs[drug.key] || 0), 0);
+            if (!days.length) return null;
+            return <p key={drug.key} style={{color: drug.color}}>{drug.label}: {days.length}天, 平均 {(total/days.length).toFixed(1)}{drug.unit}/天</p>;
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PhotoTimeline({ data, sortedDates }) {
+  const [compareType, setCompareType] = useState('face');
+  const photoDates = useMemo(() => {
+    return sortedDates.filter(d => data[d]?.hasPhotos);
+  }, [data, sortedDates]);
+
+  const [photos, setPhotos] = useState([]);
+
+  useEffect(() => {
+    const loaded = [];
+    photoDates.slice(-20).forEach(date => {
+      const photo = loadPhoto(date, compareType);
+      if (photo) {
+        loaded.push({ date, photo, analysis: compareType === 'face' ? data[date]?.faceAnalysis : data[date]?.bodyAnalysis });
+      }
+    });
+    setPhotos(loaded);
+  }, [photoDates, compareType, data]);
+
+  // Swelling trend chart
+  const chartRef = useRef(null);
+  const chartInst = useRef(null);
+
+  useEffect(() => {
+    if (!chartRef.current) return;
+    const datesWithAnalysis = sortedDates.filter(d => data[d]?.faceAnalysis);
+    if (datesWithAnalysis.length < 2) { if (chartInst.current) chartInst.current.destroy(); return; }
+
+    if (chartInst.current) chartInst.current.destroy();
+    chartInst.current = new Chart(chartRef.current, {
+      type: 'line',
+      data: {
+        labels: datesWithAnalysis,
+        datasets: [{
+          label: '臉部腫脹指數',
+          data: datesWithAnalysis.map(d => data[d].faceAnalysis.swellingIndex),
+          borderColor: '#a78bfa',
+          backgroundColor: '#a78bfa22',
+          fill: true, tension: 0.3, pointRadius: 4, pointBackgroundColor: '#a78bfa'
+        }, {
+          label: '泛紅程度',
+          data: datesWithAnalysis.map(d => data[d].faceAnalysis.redness),
+          borderColor: '#f472b6',
+          backgroundColor: '#f472b622',
+          fill: true, tension: 0.3, pointRadius: 3, pointBackgroundColor: '#f472b6'
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: '#ccc', font: { size: 10 } } } },
+        scales: {
+          x: { ticks: { color: '#888', maxTicksLimit: 8 }, grid: { color: '#222' } },
+          y: { min: 0, max: 100, ticks: { color: '#888' }, grid: { color: '#222' } }
+        }
+      }
+    });
+    return () => { if (chartInst.current) chartInst.current.destroy(); };
+  }, [data, sortedDates]);
+
+  if (!photoDates.length) {
+    return (
+      <div className="ai-card">
+        <h3>📸 照片對比時間軸</h3>
+        <p style={{color:'var(--text2)',fontSize:'0.85em'}}>尚無照片紀錄。在紀錄頁拍攝臉部或身材照，即可在此追蹤變化。</p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="ai-card">
+        <h3>📸 照片對比時間軸</h3>
+        <div style={{display:'flex',gap:8,marginBottom:12}}>
+          <button className={`sym-btn ${compareType==='face'?'active':''}`}
+            style={{background: compareType==='face'?'var(--purple)':'var(--card2)', color: compareType==='face'?'#fff':'var(--text2)', borderColor: compareType==='face'?'var(--purple)':'var(--border)'}}
+            onClick={() => setCompareType('face')}>臉部</button>
+          <button className={`sym-btn ${compareType==='body'?'active':''}`}
+            style={{background: compareType==='body'?'var(--purple)':'var(--card2)', color: compareType==='body'?'#fff':'var(--text2)', borderColor: compareType==='body'?'var(--purple)':'var(--border)'}}
+            onClick={() => setCompareType('body')}>身材</button>
+        </div>
+        {photos.length > 0 ? (
+          <div className="compare-container">
+            {photos.map(p => (
+              <div className="compare-card" key={p.date}>
+                <img src={p.photo} alt={p.date} />
+                <div className="compare-date">{p.date.slice(5)}</div>
+                {p.analysis && <div className="compare-score">腫脹: {p.analysis.swellingIndex}</div>}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p style={{color:'var(--text2)',fontSize:'0.85em'}}>此類型尚無照片</p>
+        )}
+      </div>
+
+      <div className="ai-card">
+        <h3>🤖 臉部指數趨勢</h3>
+        {sortedDates.filter(d => data[d]?.faceAnalysis).length < 2 ? (
+          <p style={{color:'var(--text2)',fontSize:'0.85em'}}>需要至少 2 天的臉部照片才能顯示趨勢圖</p>
+        ) : (
+          <div className="chart-container"><canvas ref={chartRef}></canvas></div>
+        )}
+      </div>
+    </>
+  );
+}
+
+function MorePage({ data, updateData }) {
+  const [importStatus, setImportStatus] = useState('');
+  const fileRef = useRef(null);
+
+  const exportJSON = () => {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `steroid_tracker_${today()}.json`;
+    a.click(); URL.revokeObjectURL(url);
+  };
+
+  const exportCSV = () => {
+    const dates = Object.keys(data).sort();
+    let csv = 'Date,' + DRUGS.map(d=>d.label).join(',') + ',' + SYMPTOMS.map(s=>s.label).join(',') + ',Note\n';
+    dates.forEach(date => {
+      const e = data[date];
+      const drugs = DRUGS.map(d => e.drugs?.[d.key] || '');
+      const syms = SYMPTOMS.map(s => (e.symptoms||[]).includes(s.key) ? 1 : '');
+      csv += `${date},${drugs.join(',')},${syms.join(',')},${(e.note||'').replace(/,/g,'；')}\n`;
+    });
+    const blob = new Blob(['\uFEFF'+csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `steroid_tracker_${today()}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+  };
+
+  const importJSON = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const imported = JSON.parse(ev.target.result);
+        const merged = { ...data, ...imported };
+        updateData(merged);
+        setImportStatus(`✓ 匯入成功！合併後共 ${Object.keys(merged).length} 天紀錄`);
+      } catch { setImportStatus('✗ 檔案格式錯誤'); }
+    };
+    reader.readAsText(file);
+  };
+
+  const clearAll = () => {
+    if (window.confirm('確定要清除所有資料嗎？此操作無法復原！')) {
+      updateData({});
+    }
+  };
+
+  const totalDays = Object.keys(data).length;
+
+  return (
+    <div className="page">
+      <div className="card">
+        <h3>📤 匯出資料</h3>
+        <button className="action-btn" onClick={exportJSON}>匯出 JSON（完整備份）</button>
+        <button className="action-btn" onClick={exportCSV}>匯出 CSV（可用 Excel 開啟）</button>
+      </div>
+
+      <div className="card">
+        <h3>📥 匯入資料</h3>
+        <button className="action-btn" onClick={() => fileRef.current?.click()}>選擇 JSON 檔案匯入</button>
+        <input ref={fileRef} type="file" accept=".json" style={{display:'none'}} onChange={importJSON} />
+        {importStatus && <p style={{marginTop:8,fontSize:'0.85em',color: importStatus.startsWith('✓') ? 'var(--green)' : 'var(--red)'}}>{importStatus}</p>}
+      </div>
+
+      <div className="card">
+        <h3>ℹ️ 資料統計</h3>
+        <p style={{fontSize:'0.9em'}}>
+          目前共有 <b style={{color:'var(--blue)'}}>{totalDays}</b> 天紀錄<br/>
+          資料儲存於瀏覽器本機，不會上傳至任何伺服器。<br/>
+          建議定期匯出 JSON 備份。
+        </p>
+      </div>
+
+      <div className="card">
+        <h3>⚠️ 危險操作</h3>
+        <button className="action-btn" style={{color:'var(--red)',borderColor:'var(--red)'}} onClick={clearAll}>清除所有資料</button>
+      </div>
+
+      <div className="card">
+        <h3>📸 照片管理</h3>
+        <button className="action-btn" onClick={() => {
+          const photoKeys = [];
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key.startsWith('photo_')) photoKeys.push(key);
+          }
+          if (!photoKeys.length) { alert('沒有儲存的照片'); return; }
+          const photos = {};
+          photoKeys.forEach(k => photos[k] = localStorage.getItem(k));
+          const blob = new Blob([JSON.stringify(photos)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url; a.download = `steroid_photos_${today()}.json`;
+          a.click(); URL.revokeObjectURL(url);
+        }}>匯出所有照片（JSON）</button>
+        <button className="action-btn" onClick={() => {
+          const input = document.createElement('input');
+          input.type = 'file'; input.accept = '.json';
+          input.onchange = e => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = ev => {
+              try {
+                const photos = JSON.parse(ev.target.result);
+                let count = 0;
+                Object.entries(photos).forEach(([k, v]) => {
+                  if (k.startsWith('photo_')) { localStorage.setItem(k, v); count++; }
+                });
+                alert(`✓ 匯入 ${count} 張照片成功！`);
+              } catch { alert('✗ 檔案格式錯誤'); }
+            };
+            reader.readAsText(file);
+          };
+          input.click();
+        }}>匯入照片（JSON）</button>
+        <button className="action-btn" style={{color:'var(--orange)',borderColor:'var(--orange)'}} onClick={() => {
+          const photoKeys = [];
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key.startsWith('photo_')) photoKeys.push(key);
+          }
+          if (!photoKeys.length) { alert('沒有儲存的照片'); return; }
+          if (window.confirm(`確定要刪除全部 ${photoKeys.length} 張照片嗎？`)) {
+            photoKeys.forEach(k => localStorage.removeItem(k));
+            alert('已清除所有照片');
+          }
+        }}>清除所有照片</button>
+        <p style={{fontSize:'0.78em',color:'var(--text2)',marginTop:8}}>
+          儲存空間使用：{(getStorageUsage() / 1024 / 1024).toFixed(1)} MB / ~5 MB
+        </p>
+      </div>
+
+      <div className="card" style={{fontSize:'0.78em',color:'var(--text2)'}}>
+        用藥追蹤 App v2.0<br/>
+        本工具僅供個人紀錄用途，不構成醫療建議。
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
