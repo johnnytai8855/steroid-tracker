@@ -144,19 +144,20 @@ const TIME_PERIODS = [
   { key: 'morning', label: '早上' },
   { key: 'afternoon', label: '下午' },
   { key: 'evening', label: '晚上' },
+  { key: 'midnight', label: '半夜' },
 ];
 
 // Normalize symptoms: old format (array) → new format (object with time periods)
 const normalizeSymptoms = (symptoms) => {
-  if (!symptoms) return { allday: [], morning: [], afternoon: [], evening: [] };
-  if (Array.isArray(symptoms)) return { allday: symptoms, morning: [], afternoon: [], evening: [] };
-  return { allday: symptoms.allday || [], morning: symptoms.morning || [], afternoon: symptoms.afternoon || [], evening: symptoms.evening || [] };
+  if (!symptoms) return { allday: [], morning: [], afternoon: [], evening: [], midnight: [] };
+  if (Array.isArray(symptoms)) return { allday: symptoms, morning: [], afternoon: [], evening: [], midnight: [] };
+  return { allday: symptoms.allday || [], morning: symptoms.morning || [], afternoon: symptoms.afternoon || [], evening: symptoms.evening || [], midnight: symptoms.midnight || [] };
 };
 
 // Flatten symptoms object to array (for charts/analysis backward compat)
 const flattenSymptoms = (symptoms) => {
   const norm = normalizeSymptoms(symptoms);
-  const all = new Set([...norm.allday, ...norm.morning, ...norm.afternoon, ...norm.evening]);
+  const all = new Set([...norm.allday, ...norm.morning, ...norm.afternoon, ...norm.evening, ...norm.midnight]);
   return [...all];
 };
 
