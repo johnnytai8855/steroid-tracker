@@ -106,6 +106,28 @@ body{font-family:-apple-system,'Segoe UI',system-ui,sans-serif;background:var(--
 .calib-btn:active{opacity:0.7}
 .calib-saved{font-size:0.75em;color:var(--green);margin-left:6px}
 .calib-badge{display:inline-block;background:var(--purple);color:#fff;font-size:0.6em;padding:1px 5px;border-radius:6px;margin-left:4px;vertical-align:middle}
+/* Sleep section */
+.sleep-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.sleep-field{display:flex;flex-direction:column;gap:4px}
+.sleep-field label{font-size:0.78em;color:var(--text2)}
+.sleep-field input,.sleep-field select{background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-size:0.95em;outline:none}
+.sleep-field input:focus,.sleep-field select:focus{border-color:var(--blue)}
+.sleep-total{text-align:center;padding:8px;background:var(--card2);border-radius:10px;margin-bottom:10px}
+.sleep-total .hours{font-size:1.8em;font-weight:700;color:var(--blue)}
+.sleep-total .hours-label{font-size:0.75em;color:var(--text2)}
+.sleep-quality-btns{display:flex;gap:6px;margin-bottom:8px}
+.sleep-q-btn{flex:1;padding:8px 4px;border-radius:8px;border:1px solid var(--border);background:var(--card2);color:var(--text2);font-size:0.8em;cursor:pointer;text-align:center;transition:all 0.2s}
+.sleep-q-btn.active{border-color:var(--blue);color:#fff}
+.sleep-q-btn.q1.active{background:#ef4444}
+.sleep-q-btn.q2.active{background:#fb923c}
+.sleep-q-btn.q3.active{background:#60a5fa}
+.sleep-q-btn.q4.active{background:#34d399}
+.sleep-q-btn.q5.active{background:#a78bfa}
+.sleep-import-btn{width:100%;padding:10px;background:var(--card2);border:1px solid var(--border);border-radius:8px;color:var(--blue);font-size:0.82em;cursor:pointer;margin-top:6px;transition:all 0.2s}
+.sleep-import-btn:active{background:var(--blue);color:#fff}
+.sleep-source{font-size:0.7em;color:var(--text2);text-align:right;margin-top:4px}
+.sleep-bar{display:flex;height:20px;border-radius:6px;overflow:hidden;margin:6px 0}
+.sleep-bar div{transition:width 0.3s}
 .storage-warn{background:var(--card2);border:1px solid var(--orange);border-radius:8px;padding:10px;margin-bottom:14px;font-size:0.82em;color:var(--orange)}
 /* Time period tabs */
 .period-tabs{display:flex;gap:6px;margin-bottom:12px;overflow-x:auto}
@@ -130,25 +152,61 @@ const DRUGS = [
   { key: 'cere', label: 'Cerebrolysin', unit: 'mg', color: '#22d3ee' },
 ];
 
+// Symptoms organized by category for smarter analysis
+// Categories map to hormonal indicators: E2, T-level, DHT, cortisol, etc.
+const SYMPTOM_CATEGORIES = [
+  { key: 'estrogen', label: '🔴 雌激素相關 (E2)', color: 'var(--red)' },
+  { key: 'androgen', label: '💪 雄性激素表現', color: 'var(--green)' },
+  { key: 'mood_energy', label: '🧠 精神/情緒', color: 'var(--blue)' },
+  { key: 'body', label: '🦴 身體狀態', color: 'var(--orange)' },
+  { key: 'sexual', label: '🔥 性功能', color: 'var(--pink)' },
+  { key: 'skin_hair', label: '💆 皮膚/外觀', color: 'var(--purple)' },
+];
+
 const SYMPTOMS = [
-  { key: 'face_swollen', label: '臉腫', type: 'negative' },
-  { key: 'edema', label: '水腫/脹氣', type: 'negative' },
-  { key: 'brain_fog', label: '腦霧', type: 'negative' },
-  { key: 'muscle_flat', label: '肌肉Flat', type: 'negative' },
-  { key: 'fatigue', label: '疲累', type: 'negative' },
-  { key: 'mood_bad', label: '心情差', type: 'negative' },
-  { key: 'joint_stiff', label: '關節卡', type: 'negative' },
-  { key: 'libido_down', label: '性功能↓', type: 'negative' },
-  { key: 'stomach', label: '胃痛', type: 'negative' },
-  { key: 'neck_tight', label: '脖子緊', type: 'negative' },
-  { key: 'muscle_pump', label: '肌肉Pump', type: 'positive' },
-  { key: 'libido_up', label: '性功能正常', type: 'positive' },
-  { key: 'morning_e', label: '晨勃', type: 'positive' },
-  { key: 'skin_good', label: '皮膚好', type: 'positive' },
-  { key: 'mood_good', label: '心情好', type: 'positive' },
-  { key: 'belly_water', label: '肚子水水', type: 'negative' },
-  { key: 'e2_high', label: 'E2偏高感', type: 'negative' },
-  { key: 'horny', label: '很春', type: 'positive' },
+  // E2 related — high estrogen indicators
+  { key: 'face_swollen', label: '臉腫', type: 'negative', cat: 'estrogen' },
+  { key: 'edema', label: '水腫', type: 'negative', cat: 'estrogen' },
+  { key: 'belly_water', label: '肚子水水', type: 'negative', cat: 'estrogen' },
+  { key: 'e2_high', label: 'E2偏高感', type: 'negative', cat: 'estrogen' },
+  { key: 'nipple_sens', label: '乳頭敏感', type: 'negative', cat: 'estrogen' },
+  { key: 'bloat', label: '脹氣', type: 'negative', cat: 'estrogen' },
+  // Androgen / muscle
+  { key: 'muscle_pump', label: '肌肉Pump', type: 'positive', cat: 'androgen' },
+  { key: 'muscle_flat', label: '肌肉Flat', type: 'negative', cat: 'androgen' },
+  { key: 'strength_up', label: '力量↑', type: 'positive', cat: 'androgen' },
+  { key: 'strength_down', label: '力量↓', type: 'negative', cat: 'androgen' },
+  { key: 'recovery_good', label: '恢復好', type: 'positive', cat: 'androgen' },
+  { key: 'vascularity', label: '血管明顯', type: 'positive', cat: 'androgen' },
+  // Mood & Energy
+  { key: 'mood_good', label: '心情好', type: 'positive', cat: 'mood_energy' },
+  { key: 'mood_bad', label: '心情差', type: 'negative', cat: 'mood_energy' },
+  { key: 'brain_fog', label: '腦霧', type: 'negative', cat: 'mood_energy' },
+  { key: 'fatigue', label: '疲累', type: 'negative', cat: 'mood_energy' },
+  { key: 'energy_high', label: '精力充沛', type: 'positive', cat: 'mood_energy' },
+  { key: 'anxiety', label: '焦慮', type: 'negative', cat: 'mood_energy' },
+  { key: 'irritable', label: '易怒', type: 'negative', cat: 'mood_energy' },
+  { key: 'focus_good', label: '專注力好', type: 'positive', cat: 'mood_energy' },
+  // Body
+  { key: 'joint_stiff', label: '關節卡', type: 'negative', cat: 'body' },
+  { key: 'joint_smooth', label: '關節滑順', type: 'positive', cat: 'body' },
+  { key: 'stomach', label: '胃痛', type: 'negative', cat: 'body' },
+  { key: 'neck_tight', label: '脖子緊', type: 'negative', cat: 'body' },
+  { key: 'headache', label: '頭痛', type: 'negative', cat: 'body' },
+  { key: 'bp_high', label: '血壓偏高', type: 'negative', cat: 'body' },
+  { key: 'sweat_more', label: '容易流汗', type: 'negative', cat: 'body' },
+  // Sexual
+  { key: 'libido_up', label: '性慾好', type: 'positive', cat: 'sexual' },
+  { key: 'libido_down', label: '性慾低', type: 'negative', cat: 'sexual' },
+  { key: 'morning_e', label: '晨勃', type: 'positive', cat: 'sexual' },
+  { key: 'horny', label: '很春', type: 'positive', cat: 'sexual' },
+  { key: 'ed', label: '硬度差', type: 'negative', cat: 'sexual' },
+  // Skin / appearance
+  { key: 'skin_good', label: '皮膚好', type: 'positive', cat: 'skin_hair' },
+  { key: 'skin_oily', label: '出油多', type: 'negative', cat: 'skin_hair' },
+  { key: 'acne', label: '冒痘', type: 'negative', cat: 'skin_hair' },
+  { key: 'hair_loss', label: '掉髮', type: 'negative', cat: 'skin_hair' },
+  { key: 'face_good', label: '臉部狀態好', type: 'positive', cat: 'skin_hair' },
 ];
 
 const TIME_PERIODS = [
@@ -534,6 +592,10 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
   const [faceAnalysis, setFaceAnalysis] = useState(null);
   const [bodyAnalysis, setBodyAnalysis] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
+  // Sleep tracking
+  const defaultSleep = { bedtime: '', wakeTime: '', quality: 0, deep: '', rem: '', light: '', awake: '', note: '', source: 'manual' };
+  const [sleep, setSleep] = useState(() => ({ ...defaultSleep, ...(entry.sleep || {}) }));
+  const [sleepImportMsg, setSleepImportMsg] = useState('');
   const faceInputRef = useRef(null);
   const bodyInputRef = useRef(null);
 
@@ -544,6 +606,8 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
     setSymptoms(normalizeSymptoms(e.symptoms));
     setActivePeriod('allday');
     setNote(e.note || '');
+    setSleep({ ...defaultSleep, ...(e.sleep || {}) });
+    setSleepImportMsg('');
     setSaveStatus('');
     // Load photos for this date
     const fp = loadPhoto(selectedDate, 'face');
@@ -632,8 +696,10 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
     const hasAnySymptoms = Object.values(symptoms).some(arr => arr.length > 0);
     const cleanTimes = {};
     Object.entries(drugTimes).forEach(([k, v]) => { if (v && cleanDrugs[k]) cleanTimes[k] = v; });
-    const newData = { ...data, [selectedDate]: { ...existing, drugs: cleanDrugs, drugTimes: cleanTimes, symptoms, note, updatedAt: new Date().toISOString() } };
-    if (!hasAnySymptoms && !Object.keys(cleanDrugs).length && !note && !existing.hasPhotos) delete newData[selectedDate];
+    const hasSleep = sleep.bedtime || sleep.wakeTime || sleep.quality;
+    const cleanSleep = hasSleep ? sleep : undefined;
+    const newData = { ...data, [selectedDate]: { ...existing, drugs: cleanDrugs, drugTimes: cleanTimes, symptoms, note, sleep: cleanSleep, updatedAt: new Date().toISOString() } };
+    if (!hasAnySymptoms && !Object.keys(cleanDrugs).length && !note && !existing.hasPhotos && !hasSleep) delete newData[selectedDate];
     updateData(newData);
     setSaveStatus('saved');
     setTimeout(() => setSaveStatus(''), 1500);
@@ -857,19 +923,147 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
             );
           })}
         </div>
-        <div className="sym-grid">
-          {SYMPTOMS.map(s => {
-            const isActive = (symptoms[activePeriod] || []).includes(s.key);
-            const inOtherPeriods = TIME_PERIODS.filter(p => p.key !== activePeriod && (symptoms[p.key] || []).includes(s.key)).map(p => p.label);
-            return (
-              <button key={s.key} className={`sym-btn ${s.type} ${isActive?'active':''}`}
-                onClick={() => toggleSymptom(s.key)}>
-                {s.label}
-                {inOtherPeriods.length > 0 && <span className="sym-time-label">({inOtherPeriods.join('/')})</span>}
-              </button>
-            );
-          })}
+        {SYMPTOM_CATEGORIES.map(cat => {
+          const catSyms = SYMPTOMS.filter(s => s.cat === cat.key);
+          const activeCount = catSyms.filter(s => (symptoms[activePeriod] || []).includes(s.key)).length;
+          return (
+            <div key={cat.key} style={{marginBottom:10}}>
+              <div style={{fontSize:'0.8em',color:cat.color,fontWeight:600,marginBottom:6,display:'flex',alignItems:'center',gap:6}}>
+                {cat.label}
+                {activeCount > 0 && <span style={{background:cat.color,color:'#fff',borderRadius:10,padding:'0 6px',fontSize:'0.85em'}}>{activeCount}</span>}
+              </div>
+              <div className="sym-grid">
+                {catSyms.map(s => {
+                  const isActive = (symptoms[activePeriod] || []).includes(s.key);
+                  const inOtherPeriods = TIME_PERIODS.filter(p => p.key !== activePeriod && (symptoms[p.key] || []).includes(s.key)).map(p => p.label);
+                  return (
+                    <button key={s.key} className={`sym-btn ${s.type} ${isActive?'active':''}`}
+                      onClick={() => toggleSymptom(s.key)}>
+                      {s.label}
+                      {inOtherPeriods.length > 0 && <span className="sym-time-label">({inOtherPeriods.join('/')})</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="card">
+        <h3>😴 睡眠紀錄</h3>
+        <div className="sleep-grid">
+          <div className="sleep-field">
+            <label>入睡時間</label>
+            <input type="time" value={sleep.bedtime} onChange={e => setSleep(s => ({...s, bedtime: e.target.value}))} />
+          </div>
+          <div className="sleep-field">
+            <label>起床時間</label>
+            <input type="time" value={sleep.wakeTime} onChange={e => setSleep(s => ({...s, wakeTime: e.target.value}))} />
+          </div>
         </div>
+        {sleep.bedtime && sleep.wakeTime && (() => {
+          const [bh,bm] = sleep.bedtime.split(':').map(Number);
+          const [wh,wm] = sleep.wakeTime.split(':').map(Number);
+          let mins = (wh*60+wm) - (bh*60+bm);
+          if (mins <= 0) mins += 1440;
+          const hrs = Math.floor(mins/60);
+          const rm = mins % 60;
+          return (
+            <div className="sleep-total">
+              <div className="hours">{hrs}h {rm > 0 ? `${rm}m` : ''}</div>
+              <div className="hours-label">總睡眠時間</div>
+            </div>
+          );
+        })()}
+        <label style={{fontSize:'0.78em',color:'var(--text2)',marginBottom:4,display:'block'}}>睡眠品質</label>
+        <div className="sleep-quality-btns">
+          {[{v:1,l:'😫 很差'},{v:2,l:'😕 不好'},{v:3,l:'😐 普通'},{v:4,l:'🙂 不錯'},{v:5,l:'😴 很好'}].map(q => (
+            <button key={q.v} className={`sleep-q-btn q${q.v} ${sleep.quality===q.v?'active':''}`}
+              onClick={() => setSleep(s => ({...s, quality: q.v}))}>{q.l}</button>
+          ))}
+        </div>
+        <div className="sleep-grid">
+          <div className="sleep-field">
+            <label>深睡 (分鐘)</label>
+            <input type="number" inputMode="numeric" placeholder="--" value={sleep.deep||''} onChange={e => setSleep(s => ({...s, deep: e.target.value}))} />
+          </div>
+          <div className="sleep-field">
+            <label>REM (分鐘)</label>
+            <input type="number" inputMode="numeric" placeholder="--" value={sleep.rem||''} onChange={e => setSleep(s => ({...s, rem: e.target.value}))} />
+          </div>
+          <div className="sleep-field">
+            <label>淺睡 (分鐘)</label>
+            <input type="number" inputMode="numeric" placeholder="--" value={sleep.light||''} onChange={e => setSleep(s => ({...s, light: e.target.value}))} />
+          </div>
+          <div className="sleep-field">
+            <label>清醒 (分鐘)</label>
+            <input type="number" inputMode="numeric" placeholder="--" value={sleep.awake||''} onChange={e => setSleep(s => ({...s, awake: e.target.value}))} />
+          </div>
+        </div>
+        {(sleep.deep || sleep.rem || sleep.light) && (() => {
+          const d = parseInt(sleep.deep)||0, r = parseInt(sleep.rem)||0, l = parseInt(sleep.light)||0, a = parseInt(sleep.awake)||0;
+          const total = d + r + l + a || 1;
+          return (
+            <div className="sleep-bar">
+              <div style={{width:`${d/total*100}%`,background:'#6366f1'}} title={`深睡 ${d}m`} />
+              <div style={{width:`${r/total*100}%`,background:'#a78bfa'}} title={`REM ${r}m`} />
+              <div style={{width:`${l/total*100}%`,background:'#60a5fa'}} title={`淺睡 ${l}m`} />
+              <div style={{width:`${a/total*100}%`,background:'#374151'}} title={`清醒 ${a}m`} />
+            </div>
+          );
+        })()}
+        {(sleep.deep || sleep.rem || sleep.light) && (
+          <div style={{display:'flex',justifyContent:'center',gap:10,fontSize:'0.7em',color:'var(--text2)',marginBottom:6}}>
+            <span>🟦 深睡</span><span>🟪 REM</span><span>💠 淺睡</span><span>⬛ 清醒</span>
+          </div>
+        )}
+        <button className="sleep-import-btn" onClick={async () => {
+          try {
+            const text = await navigator.clipboard.readText();
+            // Try JSON parse (from iOS Shortcut)
+            let parsed;
+            try { parsed = JSON.parse(text); } catch {}
+            if (parsed && (parsed.bedtime || parsed.sleepStart || parsed.deep || parsed.totalMinutes)) {
+              const s = { ...defaultSleep };
+              s.bedtime = parsed.bedtime || parsed.sleepStart || '';
+              s.wakeTime = parsed.wakeTime || parsed.wakeEnd || '';
+              if (parsed.quality) s.quality = parseInt(parsed.quality) || 0;
+              if (parsed.deep) s.deep = String(parseInt(parsed.deep));
+              if (parsed.rem) s.rem = String(parseInt(parsed.rem));
+              if (parsed.light) s.light = String(parseInt(parsed.light));
+              if (parsed.awake) s.awake = String(parseInt(parsed.awake));
+              s.source = parsed.source || 'health';
+              // If totalMinutes provided but no breakdown, estimate
+              if (parsed.totalMinutes && !parsed.deep) {
+                const t = parseInt(parsed.totalMinutes);
+                s.deep = String(Math.round(t * 0.2));
+                s.light = String(Math.round(t * 0.5));
+                s.rem = String(Math.round(t * 0.25));
+                s.awake = String(Math.round(t * 0.05));
+              }
+              setSleep(s);
+              setSleepImportMsg('✓ 已匯入睡眠資料！');
+              setTimeout(() => setSleepImportMsg(''), 2000);
+            } else {
+              // Try simple format: "23:30,07:15" or "bedtime wakeTime"
+              const parts = text.trim().replace(/[\s,;|]+/g, ',').split(',');
+              if (parts.length >= 2 && parts[0].includes(':') && parts[1].includes(':')) {
+                setSleep(s => ({ ...s, bedtime: parts[0].trim(), wakeTime: parts[1].trim(), source: 'paste' }));
+                setSleepImportMsg('✓ 已匯入時間！');
+                setTimeout(() => setSleepImportMsg(''), 2000);
+              } else {
+                setSleepImportMsg('⚠️ 格式無法辨識');
+                setTimeout(() => setSleepImportMsg(''), 2000);
+              }
+            }
+          } catch (err) {
+            setSleepImportMsg('⚠️ 無法讀取剪貼簿，請先複製資料');
+            setTimeout(() => setSleepImportMsg(''), 2500);
+          }
+        }}>📋 從剪貼簿匯入 (AutoSleep / Apple Health)</button>
+        {sleepImportMsg && <div style={{fontSize:'0.8em',color: sleepImportMsg.includes('✓') ? 'var(--green)' : 'var(--orange)',textAlign:'center',marginTop:4}}>{sleepImportMsg}</div>}
+        {sleep.source && sleep.source !== 'manual' && <div className="sleep-source">來源：{sleep.source === 'health' ? 'Apple Health' : sleep.source === 'autosleep' ? 'AutoSleep' : sleep.source}</div>}
       </div>
 
       <div className="card">
@@ -932,6 +1126,7 @@ function CalendarPage({ data, calMonth, setCalMonth, selectedDate, setSelectedDa
                 {negSymptoms.length > 0 && <div className="dot" style={{background:'var(--red)'}} />}
                 {posSymptoms.length > 0 && <div className="dot" style={{background:'var(--green)'}} />}
                 {entry?.hasPhotos && <div className="dot" style={{background:'var(--purple)'}} />}
+                {entry?.sleep?.bedtime && <div className="dot" style={{background:'var(--pink)'}} />}
               </div>
             </div>
           );
@@ -942,6 +1137,7 @@ function CalendarPage({ data, calMonth, setCalMonth, selectedDate, setSelectedDa
         <span><span className="dot" style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:'var(--red)',marginRight:4,verticalAlign:'middle'}} />有負面症狀</span>
         <span><span className="dot" style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:'var(--green)',marginRight:4,verticalAlign:'middle'}} />有正面反應</span>
         <span><span className="dot" style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:'var(--purple)',marginRight:4,verticalAlign:'middle'}} />有照片</span>
+        <span><span className="dot" style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:'var(--pink)',marginRight:4,verticalAlign:'middle'}} />有睡眠</span>
       </div>
 
       {/* Recent entries */}
@@ -964,6 +1160,18 @@ function CalendarPage({ data, calMonth, setCalMonth, selectedDate, setSelectedDa
               <div className="hist-date">{date} ({['日','一','二','三','四','五','六'][parseDate(date).getDay()]})</div>
               {drugStr && <div className="hist-drugs">💊 {drugStr}</div>}
               {symStr && <div className="hist-symptoms">📋 {symStr}</div>}
+              {e.sleep?.bedtime && (() => {
+                const s = e.sleep;
+                let sleepStr = `😴 ${s.bedtime}→${s.wakeTime||'?'}`;
+                if (s.bedtime && s.wakeTime) {
+                  const [bh,bm] = s.bedtime.split(':').map(Number);
+                  const [wh,wm] = s.wakeTime.split(':').map(Number);
+                  let mins = (wh*60+wm)-(bh*60+bm); if(mins<=0) mins+=1440;
+                  sleepStr += ` (${Math.floor(mins/60)}h${mins%60>0?mins%60+'m':''})`;
+                }
+                if (s.quality) sleepStr += ` ${'⭐'.repeat(Math.min(s.quality,5))}`;
+                return <div style={{fontSize:'0.82em',color:'var(--pink)',marginTop:2}}>{sleepStr}</div>;
+              })()}
               {e.note && <div className="hist-note">📝 {e.note}</div>}
             </div>
           );
@@ -976,8 +1184,10 @@ function CalendarPage({ data, calMonth, setCalMonth, selectedDate, setSelectedDa
 function ChartPage({ data }) {
   const chartRef1 = useRef(null);
   const chartRef2 = useRef(null);
+  const chartRef3 = useRef(null);
   const chart1 = useRef(null);
   const chart2 = useRef(null);
+  const chart3 = useRef(null);
 
   const sortedDates = useMemo(() => Object.keys(data).sort(), [data]);
 
@@ -1054,9 +1264,77 @@ function ChartPage({ data }) {
       }
     });
 
+    // Sleep chart - daily sleep hours + quality
+    const sleepDates = sortedDates.filter(d => data[d]?.sleep?.bedtime);
+    if (sleepDates.length >= 2 && chartRef3.current) {
+      if (chart3.current) chart3.current.destroy();
+      chart3.current = new Chart(chartRef3.current, {
+        type: 'bar',
+        data: {
+          labels: sleepDates.map(d => d.slice(5)),
+          datasets: [{
+            label: '深睡',
+            data: sleepDates.map(d => parseInt(data[d].sleep.deep)||0),
+            backgroundColor: '#6366f188', borderColor: '#6366f1', borderWidth: 1,
+            stack: 'sleep'
+          }, {
+            label: 'REM',
+            data: sleepDates.map(d => parseInt(data[d].sleep.rem)||0),
+            backgroundColor: '#a78bfa88', borderColor: '#a78bfa', borderWidth: 1,
+            stack: 'sleep'
+          }, {
+            label: '淺睡',
+            data: sleepDates.map(d => parseInt(data[d].sleep.light)||0),
+            backgroundColor: '#60a5fa88', borderColor: '#60a5fa', borderWidth: 1,
+            stack: 'sleep'
+          }, {
+            label: '總時數 (hr)',
+            data: sleepDates.map(d => {
+              const s = data[d].sleep;
+              if (!s.bedtime || !s.wakeTime) return 0;
+              const [bh,bm] = s.bedtime.split(':').map(Number);
+              const [wh,wm] = s.wakeTime.split(':').map(Number);
+              let mins = (wh*60+wm) - (bh*60+bm);
+              if (mins <= 0) mins += 1440;
+              return +(mins/60).toFixed(1);
+            }),
+            type: 'line',
+            borderColor: '#fbbf24',
+            backgroundColor: '#fbbf2422',
+            pointBackgroundColor: '#fbbf24',
+            pointRadius: 4,
+            tension: 0.3,
+            yAxisID: 'y1'
+          }, {
+            label: '品質',
+            data: sleepDates.map(d => data[d].sleep.quality || 0),
+            type: 'line',
+            borderColor: '#34d399',
+            backgroundColor: '#34d39922',
+            pointBackgroundColor: '#34d399',
+            pointRadius: 3,
+            tension: 0.3,
+            borderDash: [4,4],
+            yAxisID: 'y2'
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { labels: { color: '#ccc', font: { size: 10 } } } },
+          scales: {
+            x: { stacked: true, ticks: { color: '#888', maxTicksLimit: 10 }, grid: { color: '#222' } },
+            y: { stacked: true, title: { display: true, text: '分鐘', color: '#888' }, ticks: { color: '#888' }, grid: { color: '#222' } },
+            y1: { position: 'right', title: { display: true, text: '小時', color: '#fbbf24' }, ticks: { color: '#fbbf24' }, grid: { display: false } },
+            y2: { display: false, min: 0, max: 6 }
+          }
+        }
+      });
+    }
+
     return () => {
       if (chart1.current) chart1.current.destroy();
       if (chart2.current) chart2.current.destroy();
+      if (chart3.current) chart3.current.destroy();
     };
   }, [data, sortedDates]);
 
@@ -1121,6 +1399,67 @@ function ChartPage({ data }) {
         <div className="chart-container"><canvas ref={chartRef2}></canvas></div>}
       </div>
 
+      <div className="card">
+        <h3>😴 睡眠追蹤趨勢</h3>
+        {sortedDates.filter(d => data[d]?.sleep?.bedtime).length < 2 ?
+          <p style={{color:'var(--text2)',fontSize:'0.9em'}}>需要至少 2 天睡眠資料才能顯示圖表</p> :
+          <div className="chart-container"><canvas ref={chartRef3}></canvas></div>
+        }
+      </div>
+
+      {/* Sleep vs Symptoms correlation */}
+      {(() => {
+        const sleepDates = sortedDates.filter(d => data[d]?.sleep?.bedtime && data[d]?.sleep?.wakeTime);
+        if (sleepDates.length < 5) return null;
+        // Calculate sleep hours per day
+        const sleepHours = {};
+        sleepDates.forEach(d => {
+          const s = data[d].sleep;
+          const [bh,bm] = s.bedtime.split(':').map(Number);
+          const [wh,wm] = s.wakeTime.split(':').map(Number);
+          let mins = (wh*60+wm) - (bh*60+bm);
+          if (mins <= 0) mins += 1440;
+          sleepHours[d] = mins / 60;
+        });
+        const avgHours = Object.values(sleepHours).reduce((a,b)=>a+b,0) / Object.values(sleepHours).length;
+        // Compare symptoms on low sleep vs good sleep days
+        const lowSleepDays = sleepDates.filter(d => sleepHours[d] < avgHours - 0.5);
+        const goodSleepDays = sleepDates.filter(d => sleepHours[d] >= avgHours + 0.5);
+        if (lowSleepDays.length < 2 || goodSleepDays.length < 2) return null;
+        const symCount = (days) => {
+          const counts = {};
+          days.forEach(d => {
+            flattenSymptoms(data[d]?.symptoms).forEach(s => { counts[s] = (counts[s]||0) + 1; });
+          });
+          return counts;
+        };
+        const lowCounts = symCount(lowSleepDays);
+        const goodCounts = symCount(goodSleepDays);
+        const diffs = SYMPTOMS.filter(s => s.type === 'negative').map(s => ({
+          label: s.label,
+          lowRate: ((lowCounts[s.key]||0) / lowSleepDays.length * 100).toFixed(0),
+          goodRate: ((goodCounts[s.key]||0) / goodSleepDays.length * 100).toFixed(0),
+          diff: ((lowCounts[s.key]||0) / lowSleepDays.length - (goodCounts[s.key]||0) / goodSleepDays.length) * 100
+        })).filter(d => Math.abs(d.diff) > 10).sort((a,b) => b.diff - a.diff);
+        if (!diffs.length) return null;
+        return (
+          <div className="card">
+            <h3>😴 睡眠 vs 症狀關聯</h3>
+            <p style={{color:'var(--text2)',fontSize:'0.78em',marginBottom:8}}>
+              睡不好 ({'<'}{(avgHours-0.5).toFixed(1)}h, {lowSleepDays.length}天) vs 睡得好 (≥{(avgHours+0.5).toFixed(1)}h, {goodSleepDays.length}天)
+            </p>
+            {diffs.map(d => (
+              <div key={d.label} style={{fontSize:'0.85em',padding:'4px 0',display:'flex',justifyContent:'space-between'}}>
+                <span>{d.label}</span>
+                <span style={{color: d.diff > 0 ? 'var(--red)' : 'var(--green)'}}>
+                  睡差:{d.lowRate}% vs 睡好:{d.goodRate}% {d.diff > 0 ? '⚠️' : '✅'}
+                </span>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
+
       {correlations && Object.keys(correlations).length > 0 && (
         <div className="card">
           <h3>🔍 劑量與症狀關聯分析</h3>
@@ -1145,7 +1484,7 @@ function ChartPage({ data }) {
       <PhotoTimeline data={data} sortedDates={sortedDates} />
 
       <div className="card">
-        <h3>📈 統計摘要</h3>
+        <h3>📈 統計摘要 / 荷爾蒙狀態推測</h3>
         <div style={{fontSize:'0.88em'}}>
           <p>總紀錄天數：<b>{totalDays}</b></p>
           {totalDays > 0 && (
@@ -1157,6 +1496,51 @@ function ChartPage({ data }) {
             if (!days.length) return null;
             return <p key={drug.key} style={{color: drug.color}}>{drug.label}: {days.length}天, 平均 {(total/days.length).toFixed(1)}{drug.unit}/天</p>;
           })}
+          {/* Hormonal state inference from recent 7 days */}
+          {totalDays >= 3 && (() => {
+            const recent = sortedDates.slice(-7);
+            const catCounts = {};
+            SYMPTOM_CATEGORIES.forEach(c => { catCounts[c.key] = { pos: 0, neg: 0 }; });
+            recent.forEach(d => {
+              const syms = flattenSymptoms(data[d]?.symptoms);
+              syms.forEach(s => {
+                const sym = SYMPTOMS.find(x => x.key === s);
+                if (sym) {
+                  if (sym.type === 'positive') catCounts[sym.cat].pos++;
+                  else catCounts[sym.cat].neg++;
+                }
+              });
+            });
+            const insights = [];
+            // E2 analysis
+            if (catCounts.estrogen.neg >= 3) insights.push({ text: 'E2 可能偏高 — 水腫/腫脹症狀頻繁出現', color: 'var(--red)', icon: '🔴' });
+            else if (catCounts.estrogen.neg === 0 && recent.length >= 5) insights.push({ text: 'E2 看起來正常 — 無水腫/雌激素症狀', color: 'var(--green)', icon: '✅' });
+            // Androgen
+            if (catCounts.androgen.pos >= 3 && catCounts.androgen.neg <= 1) insights.push({ text: '雄性激素表現良好 — Pump/力量正常', color: 'var(--green)', icon: '💪' });
+            else if (catCounts.androgen.neg >= 3) insights.push({ text: '雄性激素表現偏弱 — Flat/力量下降', color: 'var(--orange)', icon: '⚠️' });
+            // Sexual
+            if (catCounts.sexual.pos >= 2 && catCounts.sexual.neg === 0) insights.push({ text: '性功能正常 — 荷爾蒙平衡良好指標', color: 'var(--green)', icon: '🔥' });
+            else if (catCounts.sexual.neg >= 2) insights.push({ text: '性功能下降 — 可能E2偏高或T偏低', color: 'var(--red)', icon: '⚠️' });
+            // Mood
+            if (catCounts.mood_energy.neg >= 3) insights.push({ text: '精神狀態不佳 — 可能跟睡眠或劑量有關', color: 'var(--orange)', icon: '🧠' });
+            // Skin/DHT
+            if (catCounts.skin_hair.neg >= 2) insights.push({ text: '皮膚問題 — 可能DHT偏高', color: 'var(--orange)', icon: '💆' });
+            // Joint (E2 related - too low = dry joints)
+            const jointDry = recent.filter(d => flattenSymptoms(data[d]?.symptoms).includes('joint_stiff')).length;
+            if (jointDry >= 3) insights.push({ text: '關節卡頻繁 — E2可能偏低（關節需要E2潤滑）', color: 'var(--orange)', icon: '🦴' });
+            if (!insights.length) return null;
+            return (
+              <div style={{marginTop:12,padding:10,background:'var(--card2)',borderRadius:8}}>
+                <div style={{fontSize:'0.82em',fontWeight:600,color:'var(--purple)',marginBottom:6}}>📊 最近 {recent.length} 天荷爾蒙狀態推測：</div>
+                {insights.map((ins, i) => (
+                  <div key={i} style={{fontSize:'0.82em',padding:'3px 0',color:ins.color}}>
+                    {ins.icon} {ins.text}
+                  </div>
+                ))}
+                <div style={{fontSize:'0.7em',color:'var(--text2)',marginTop:6}}>* 僅供參考，建議搭配血液檢驗數據</div>
+              </div>
+            );
+          })()}
         </div>
       </div>
     </div>
@@ -1369,13 +1753,23 @@ function MorePage({ data, updateData }) {
 
   const exportCSV = () => {
     const dates = Object.keys(data).sort();
-    let csv = 'Date,' + DRUGS.map(d=>d.label).join(',') + ',' + SYMPTOMS.map(s=>s.label).join(',') + ',Note\n';
+    let csv = 'Date,' + DRUGS.map(d=>d.label).join(',') + ',' + SYMPTOMS.map(s=>s.label).join(',') + ',睡眠時數,睡眠品質,深睡分鐘,REM分鐘,Note\n';
     dates.forEach(date => {
       const e = data[date];
       const drugs = DRUGS.map(d => e.drugs?.[d.key] || '');
       const allSyms = flattenSymptoms(e.symptoms);
       const syms = SYMPTOMS.map(s => allSyms.includes(s.key) ? 1 : '');
-      csv += `${date},${drugs.join(',')},${syms.join(',')},${(e.note||'').replace(/,/g,'；')}\n`;
+      let sleepHrs = '', sleepQ = '', deepMin = '', remMin = '';
+      if (e.sleep?.bedtime && e.sleep?.wakeTime) {
+        const [bh,bm] = e.sleep.bedtime.split(':').map(Number);
+        const [wh,wm] = e.sleep.wakeTime.split(':').map(Number);
+        let mins = (wh*60+wm)-(bh*60+bm); if(mins<=0) mins+=1440;
+        sleepHrs = (mins/60).toFixed(1);
+      }
+      if (e.sleep?.quality) sleepQ = e.sleep.quality;
+      if (e.sleep?.deep) deepMin = e.sleep.deep;
+      if (e.sleep?.rem) remMin = e.sleep.rem;
+      csv += `${date},${drugs.join(',')},${syms.join(',')},${sleepHrs},${sleepQ},${deepMin},${remMin},${(e.note||'').replace(/,/g,'；')}\n`;
     });
     const blob = new Blob(['\uFEFF'+csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -1491,8 +1885,40 @@ function MorePage({ data, updateData }) {
         </p>
       </div>
 
+      <div className="card">
+        <h3>😴 睡眠匯入設定</h3>
+        <p style={{fontSize:'0.82em',color:'var(--text2)',lineHeight:1.6,marginBottom:10}}>
+          透過 iOS 捷徑自動讀取 Apple Health 或 AutoSleep 的睡眠資料：
+        </p>
+        <div style={{background:'var(--card2)',borderRadius:8,padding:12,fontSize:'0.78em',color:'var(--text)',lineHeight:1.7,marginBottom:10}}>
+          <b style={{color:'var(--blue)'}}>設定步驟：</b><br/>
+          1. 開啟 iPhone「捷徑」App<br/>
+          2. 新增捷徑，加入以下動作：<br/>
+          <div style={{background:'var(--bg)',borderRadius:6,padding:8,margin:'6px 0',fontSize:'0.9em'}}>
+            ① 「尋找健康樣本」<br/>
+            　類型：睡眠分析<br/>
+            　排序：開始日期（最新的）<br/>
+            　限制：1 筆<br/>
+            ② 「文字」動作，輸入：<br/>
+            <code style={{color:'var(--green)',display:'block',padding:'4px 0',wordBreak:'break-all'}}>
+            {'{"bedtime":"HH:mm","wakeTime":"HH:mm","deep":"深睡分鐘","rem":"REM分鐘","light":"淺睡分鐘","source":"autosleep"}'}
+            </code>
+            　（用「健康樣本」的欄位取代上面的值）<br/>
+            ③ 「拷貝到剪貼簿」<br/>
+            ④ 「打開URL」→ 填入追蹤器網址
+          </div>
+          <b style={{color:'var(--blue)'}}>簡易版（只匯入時間）：</b><br/>
+          複製「23:30,07:15」格式到剪貼簿<br/>
+          回到追蹤器按「從剪貼簿匯入」即可
+        </div>
+        <p style={{fontSize:'0.75em',color:'var(--text2)'}}>
+          如果你用 AutoSleep，它的資料會自動寫入 Apple Health，<br/>
+          所以上面的捷徑就能讀到 AutoSleep 的詳細資料。
+        </p>
+      </div>
+
       <div className="card" style={{fontSize:'0.78em',color:'var(--text2)'}}>
-        用藥追蹤 App v3.0<br/>
+        用藥追蹤 App v4.0<br/>
         本工具僅供個人紀錄用途，不構成醫療建議。
       </div>
     </div>
