@@ -96,6 +96,12 @@ body{font-family:-apple-system,'Segoe UI',system-ui,sans-serif;background:var(--
 .compare-card .compare-date{font-size:0.75em;color:var(--text2);margin-top:4px}
 .compare-card .compare-score{font-size:0.7em;color:var(--purple);margin-top:2px}
 .storage-warn{background:var(--card2);border:1px solid var(--orange);border-radius:8px;padding:10px;margin-bottom:14px;font-size:0.82em;color:var(--orange)}
+/* Time period tabs */
+.period-tabs{display:flex;gap:6px;margin-bottom:12px;overflow-x:auto}
+.period-tab{padding:6px 14px;border-radius:16px;border:1px solid var(--border);background:var(--card2);color:var(--text2);font-size:0.82em;cursor:pointer;white-space:nowrap;position:relative;transition:all 0.2s}
+.period-tab.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+.period-tab .period-count{position:absolute;top:-4px;right:-4px;background:var(--red);color:#fff;font-size:0.65em;width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.sym-time-label{font-size:0.75em;color:var(--text2);margin-left:4px}
 </style>
 </head>
 <body>
@@ -132,6 +138,27 @@ const SYMPTOMS = [
   { key: 'e2_high', label: 'E2偏高感', type: 'negative' },
   { key: 'horny', label: '很春', type: 'positive' },
 ];
+
+const TIME_PERIODS = [
+  { key: 'allday', label: '整天' },
+  { key: 'morning', label: '早上' },
+  { key: 'afternoon', label: '下午' },
+  { key: 'evening', label: '晚上' },
+];
+
+// Normalize symptoms: old format (array) → new format (object with time periods)
+const normalizeSymptoms = (symptoms) => {
+  if (!symptoms) return { allday: [], morning: [], afternoon: [], evening: [] };
+  if (Array.isArray(symptoms)) return { allday: symptoms, morning: [], afternoon: [], evening: [] };
+  return { allday: symptoms.allday || [], morning: symptoms.morning || [], afternoon: symptoms.afternoon || [], evening: symptoms.evening || [] };
+};
+
+// Flatten symptoms object to array (for charts/analysis backward compat)
+const flattenSymptoms = (symptoms) => {
+  const norm = normalizeSymptoms(symptoms);
+  const all = new Set([...norm.allday, ...norm.morning, ...norm.afternoon, ...norm.evening]);
+  return [...all];
+};
 
 const fmt = d => d.toISOString().slice(0, 10);
 const today = () => fmt(new Date());
@@ -281,9 +308,11 @@ function App() {
 }
 
 function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatus, setSaveStatus }) {
-  const entry = data[selectedDate] || { drugs: {}, symptoms: [], note: '' };
+  const entry = data[selectedDate] || { drugs: {}, symptoms: {}, note: '' };
   const [drugs, setDrugs] = useState(entry.drugs);
-  const [symptoms, setSymptoms] = useState(entry.symptoms || []);
+  const [drugTimes, setDrugTimes] = useState(entry.drugTimes || {});
+  const [symptoms, setSymptoms] = useState(() => normalizeSymptoms(entry.symptoms));
+  const [activePeriod, setActivePeriod] = useState('allday');
   const [note, setNote] = useState(entry.note || '');
   const [facePhoto, setFacePhoto] = useState(null);
   const [bodyPhoto, setBodyPhoto] = useState(null);
@@ -294,9 +323,11 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
   const bodyInputRef = useRef(null);
 
   useEffect(() => {
-    const e = data[selectedDate] || { drugs: {}, symptoms: [], note: '' };
+    const e = data[selectedDate] || { drugs: {}, symptoms: {}, note: '' };
     setDrugs(e.drugs || {});
-    setSymptoms(e.symptoms || []);
+    setDrugTimes(e.drugTimes || {});
+    setSymptoms(normalizeSymptoms(e.symptoms));
+    setActivePeriod('allday');
     setNote(e.note || '');
     setSaveStatus('');
     // Load photos for this date
@@ -318,7 +349,12 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
   };
 
   const setDrug = (key, val) => setDrugs(prev => ({ ...prev, [key]: val }));
-  const toggleSymptom = key => setSymptoms(prev => prev.includes(key) ? prev.filter(s => s !== key) : [...prev, key]);
+  const setDrugTime = (key, val) => setDrugTimes(prev => ({ ...prev, [key]: val }));
+  const toggleSymptom = key => setSymptoms(prev => {
+    const current = prev[activePeriod] || [];
+    const updated = current.includes(key) ? current.filter(s => s !== key) : [...current, key];
+    return { ...prev, [activePeriod]: updated };
+  });
 
   const handlePhoto = async (e, type) => {
     const file = e.target.files[0];
@@ -370,8 +406,11 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
     const cleanDrugs = {};
     Object.entries(drugs).forEach(([k, v]) => { if (v && parseFloat(v) > 0) cleanDrugs[k] = parseFloat(v); });
     const existing = data[selectedDate] || {};
-    const newData = { ...data, [selectedDate]: { ...existing, drugs: cleanDrugs, symptoms, note, updatedAt: new Date().toISOString() } };
-    if (!symptoms.length && !Object.keys(cleanDrugs).length && !note && !existing.hasPhotos) delete newData[selectedDate];
+    const hasAnySymptoms = Object.values(symptoms).some(arr => arr.length > 0);
+    const cleanTimes = {};
+    Object.entries(drugTimes).forEach(([k, v]) => { if (v && cleanDrugs[k]) cleanTimes[k] = v; });
+    const newData = { ...data, [selectedDate]: { ...existing, drugs: cleanDrugs, drugTimes: cleanTimes, symptoms, note, updatedAt: new Date().toISOString() } };
+    if (!hasAnySymptoms && !Object.keys(cleanDrugs).length && !note && !existing.hasPhotos) delete newData[selectedDate];
     updateData(newData);
     setSaveStatus('saved');
     setTimeout(() => setSaveStatus(''), 1500);
@@ -484,25 +523,46 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
       <div className="card">
         <h3>💊 藥物劑量</h3>
         {DRUGS.map(d => (
-          <div className="drug-row" key={d.key}>
+          <div className="drug-row" key={d.key} style={{flexWrap:'wrap'}}>
             <div className="drug-label" style={{color: d.color}}>{d.label}</div>
             <input className="drug-input" type="number" step="any" placeholder="0"
               value={drugs[d.key] || ''} onChange={e => setDrug(d.key, e.target.value)}
-              inputMode="decimal" />
+              inputMode="decimal" style={{flex:'1 1 60px',minWidth:60}} />
             <div className="drug-unit">{d.unit}</div>
+            <input type="time" value={drugTimes[d.key] || ''}
+              onChange={e => setDrugTime(d.key, e.target.value)}
+              style={{background:'var(--card2)',border:'1px solid var(--border)',borderRadius:8,padding:'6px 8px',color:'var(--text)',fontSize:'0.82em',outline:'none',width:90,flexShrink:0}}
+              placeholder="時間" />
           </div>
         ))}
       </div>
 
       <div className="card">
         <h3>📋 症狀紀錄</h3>
+        <div className="period-tabs">
+          {TIME_PERIODS.map(p => {
+            const count = (symptoms[p.key] || []).length;
+            return (
+              <button key={p.key} className={`period-tab ${activePeriod===p.key?'active':''}`}
+                onClick={() => setActivePeriod(p.key)}>
+                {p.label}
+                {count > 0 && <span className="period-count">{count}</span>}
+              </button>
+            );
+          })}
+        </div>
         <div className="sym-grid">
-          {SYMPTOMS.map(s => (
-            <button key={s.key} className={`sym-btn ${s.type} ${symptoms.includes(s.key)?'active':''}`}
-              onClick={() => toggleSymptom(s.key)}>
-              {s.label}
-            </button>
-          ))}
+          {SYMPTOMS.map(s => {
+            const isActive = (symptoms[activePeriod] || []).includes(s.key);
+            const inOtherPeriods = TIME_PERIODS.filter(p => p.key !== activePeriod && (symptoms[p.key] || []).includes(s.key)).map(p => p.label);
+            return (
+              <button key={s.key} className={`sym-btn ${s.type} ${isActive?'active':''}`}
+                onClick={() => toggleSymptom(s.key)}>
+                {s.label}
+                {inOtherPeriods.length > 0 && <span className="sym-time-label">({inOtherPeriods.join('/')})</span>}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -552,11 +612,12 @@ function CalendarPage({ data, calMonth, setCalMonth, selectedDate, setSelectedDa
           const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
           const entry = data[dateStr];
           const hasDrugs = entry && Object.keys(entry.drugs || {}).length > 0;
-          const hasSymptoms = entry && (entry.symptoms || []).length > 0;
+          const allSyms = entry ? flattenSymptoms(entry.symptoms) : [];
+          const hasSymptoms = allSyms.length > 0;
           const isToday = dateStr === todayStr;
           const isSel = dateStr === selectedDate;
-          const negSymptoms = (entry?.symptoms || []).filter(s => SYMPTOMS.find(x=>x.key===s)?.type === 'negative');
-          const posSymptoms = (entry?.symptoms || []).filter(s => SYMPTOMS.find(x=>x.key===s)?.type === 'positive');
+          const negSymptoms = allSyms.filter(s => SYMPTOMS.find(x=>x.key===s)?.type === 'negative');
+          const posSymptoms = allSyms.filter(s => SYMPTOMS.find(x=>x.key===s)?.type === 'positive');
           return (
             <div className={`cal-day ${isToday?'today':''} ${isSel?'selected':''}`} key={d} onClick={() => clickDay(d)}>
               <div className="num">{d}</div>
@@ -583,7 +644,14 @@ function CalendarPage({ data, calMonth, setCalMonth, selectedDate, setSelectedDa
         {Object.keys(data).sort().reverse().slice(0, 10).map(date => {
           const e = data[date];
           const drugStr = Object.entries(e.drugs||{}).map(([k,v]) => `${DRUGS.find(d=>d.key===k)?.label||k} ${v}${DRUGS.find(d=>d.key===k)?.unit||''}`).join(', ');
-          const symStr = (e.symptoms||[]).map(s => SYMPTOMS.find(x=>x.key===s)?.label||s).join(', ');
+          const norm = normalizeSymptoms(e.symptoms);
+          const allSyms = flattenSymptoms(e.symptoms);
+          const symParts = [];
+          TIME_PERIODS.forEach(p => {
+            const syms = (norm[p.key] || []).map(s => SYMPTOMS.find(x=>x.key===s)?.label||s);
+            if (syms.length) symParts.push(`${p.label}: ${syms.join(', ')}`);
+          });
+          const symStr = symParts.length > 1 ? symParts.join(' | ') : allSyms.map(s => SYMPTOMS.find(x=>x.key===s)?.label||s).join(', ');
           if (!drugStr && !symStr) return null;
           return (
             <div className="hist-item" key={date} onClick={() => { setSelectedDate(date); setTab('record'); }} style={{cursor:'pointer'}}>
@@ -622,7 +690,7 @@ function ChartPage({ data }) {
       Object.entries(entry.drugs || {}).forEach(([k, v]) => {
         weekly[wk].drugs[k] = (weekly[wk].drugs[k] || 0) + v;
       });
-      (entry.symptoms || []).forEach(s => {
+      flattenSymptoms(entry.symptoms).forEach(s => {
         weekly[wk].symptoms[s] = (weekly[wk].symptoms[s] || 0) + 1;
       });
     });
@@ -697,7 +765,7 @@ function ChartPage({ data }) {
 
       sortedDates.forEach((date, i) => {
         const entry = data[date];
-        const hasSymptom = (entry.symptoms || []).includes(sym.key);
+        const hasSymptom = flattenSymptoms(entry.symptoms).includes(sym.key);
         // 3-day lookback
         DRUGS.forEach(drug => {
           let total = 0, count = 0;
@@ -791,6 +859,11 @@ function ChartPage({ data }) {
 
 function PhotoTimeline({ data, sortedDates }) {
   const [compareType, setCompareType] = useState('face');
+  const [compareDate1, setCompareDate1] = useState('');
+  const [compareDate2, setCompareDate2] = useState('');
+  const [comparePhoto1, setComparePhoto1] = useState(null);
+  const [comparePhoto2, setComparePhoto2] = useState(null);
+
   const photoDates = useMemo(() => {
     return sortedDates.filter(d => data[d]?.hasPhotos);
   }, [data, sortedDates]);
@@ -806,7 +879,24 @@ function PhotoTimeline({ data, sortedDates }) {
       }
     });
     setPhotos(loaded);
+    // Set default compare dates
+    if (loaded.length >= 2 && !compareDate1) {
+      setCompareDate1(loaded[0].date);
+      setCompareDate2(loaded[loaded.length - 1].date);
+    }
   }, [photoDates, compareType, data]);
+
+  // Load compare photos when dates change
+  useEffect(() => {
+    if (compareDate1) {
+      const p = loadPhoto(compareDate1, compareType);
+      setComparePhoto1(p ? { photo: p, analysis: compareType === 'face' ? data[compareDate1]?.faceAnalysis : data[compareDate1]?.bodyAnalysis } : null);
+    }
+    if (compareDate2) {
+      const p = loadPhoto(compareDate2, compareType);
+      setComparePhoto2(p ? { photo: p, analysis: compareType === 'face' ? data[compareDate2]?.faceAnalysis : data[compareDate2]?.bodyAnalysis } : null);
+    }
+  }, [compareDate1, compareDate2, compareType, data]);
 
   // Swelling trend chart
   const chartRef = useRef(null);
@@ -883,6 +973,57 @@ function PhotoTimeline({ data, sortedDates }) {
           <p style={{color:'var(--text2)',fontSize:'0.85em'}}>此類型尚無照片</p>
         )}
       </div>
+
+      {/* Side-by-side comparison */}
+      {photos.length >= 2 && (
+        <div className="ai-card">
+          <h3>🔍 兩日對比</h3>
+          <div style={{display:'flex',gap:8,marginBottom:12}}>
+            <select value={compareDate1} onChange={e => setCompareDate1(e.target.value)}
+              style={{flex:1,background:'var(--card2)',border:'1px solid var(--border)',borderRadius:8,padding:'8px',color:'var(--text)',fontSize:'0.85em'}}>
+              {photos.map(p => <option key={p.date} value={p.date}>{p.date}</option>)}
+            </select>
+            <span style={{color:'var(--text2)',alignSelf:'center'}}>vs</span>
+            <select value={compareDate2} onChange={e => setCompareDate2(e.target.value)}
+              style={{flex:1,background:'var(--card2)',border:'1px solid var(--border)',borderRadius:8,padding:'8px',color:'var(--text)',fontSize:'0.85em'}}>
+              {photos.map(p => <option key={p.date} value={p.date}>{p.date}</option>)}
+            </select>
+          </div>
+          <div style={{display:'flex',gap:8}}>
+            {comparePhoto1 && (
+              <div style={{flex:1,textAlign:'center'}}>
+                <img src={comparePhoto1.photo} alt={compareDate1} style={{width:'100%',borderRadius:10,border:'2px solid var(--border)'}} />
+                <div style={{fontSize:'0.8em',color:'var(--text2)',marginTop:4}}>{compareDate1}</div>
+                {comparePhoto1.analysis && <div style={{fontSize:'0.8em',color:'var(--purple)'}}>腫脹: {comparePhoto1.analysis.swellingIndex}</div>}
+              </div>
+            )}
+            {comparePhoto2 && (
+              <div style={{flex:1,textAlign:'center'}}>
+                <img src={comparePhoto2.photo} alt={compareDate2} style={{width:'100%',borderRadius:10,border:'2px solid var(--border)'}} />
+                <div style={{fontSize:'0.8em',color:'var(--text2)',marginTop:4}}>{compareDate2}</div>
+                {comparePhoto2.analysis && <div style={{fontSize:'0.8em',color:'var(--purple)'}}>腫脹: {comparePhoto2.analysis.swellingIndex}</div>}
+              </div>
+            )}
+          </div>
+          {comparePhoto1?.analysis && comparePhoto2?.analysis && (
+            <div style={{marginTop:12,padding:10,background:'var(--card2)',borderRadius:8,fontSize:'0.82em'}}>
+              <div style={{fontWeight:600,marginBottom:6,color:'var(--purple)'}}>差異分析</div>
+              {['swellingIndex','brightness','redness','warmth'].map(k => {
+                const labels = {swellingIndex:'腫脹指數',brightness:'亮度',redness:'泛紅',warmth:'色溫'};
+                const diff = comparePhoto2.analysis[k] - comparePhoto1.analysis[k];
+                return (
+                  <div key={k} style={{display:'flex',justifyContent:'space-between',padding:'3px 0'}}>
+                    <span style={{color:'var(--text2)'}}>{labels[k]}</span>
+                    <span style={{color: diff > 5 ? 'var(--red)' : diff < -5 ? 'var(--green)' : 'var(--text2)'}}>
+                      {diff > 0 ? '+' : ''}{diff} {diff > 5 ? '↑' : diff < -5 ? '↓' : '→'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="ai-card">
         <h3>🤖 臉部指數趨勢</h3>
@@ -1032,7 +1173,7 @@ function MorePage({ data, updateData }) {
       </div>
 
       <div className="card" style={{fontSize:'0.78em',color:'var(--text2)'}}>
-        用藥追蹤 App v2.0<br/>
+        用藥追蹤 App v3.0<br/>
         本工具僅供個人紀錄用途，不構成醫療建議。
       </div>
     </div>
