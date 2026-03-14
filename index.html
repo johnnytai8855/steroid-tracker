@@ -135,6 +135,7 @@ const SYMPTOMS = [
   { key: 'morning_e', label: '晨勃', type: 'positive' },
   { key: 'skin_good', label: '皮膚好', type: 'positive' },
   { key: 'mood_good', label: '心情好', type: 'positive' },
+  { key: 'belly_water', label: '肚子水水', type: 'negative' },
   { key: 'e2_high', label: 'E2偏高感', type: 'negative' },
   { key: 'horny', label: '很春', type: 'positive' },
 ];
@@ -212,12 +213,13 @@ const compressImage = (file, maxWidth = 480, quality = 0.6) => {
 };
 
 // AI Analysis: compute face/body metrics from image
-const analyzePhoto = (dataUrl) => {
+const analyzePhoto = (dataUrl, type) => {
+  // type: 'face' or 'body'
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
       const canvas = document.createElement('canvas');
-      const size = 200;
+      const size = 300; // higher res for better analysis
       let w = img.width, h = img.height;
       if (w > h) { h = (size / w) * h; w = size; } else { w = (size / h) * w; h = size; }
       canvas.width = w; canvas.height = h;
@@ -225,16 +227,21 @@ const analyzePhoto = (dataUrl) => {
       ctx.drawImage(img, 0, 0, w, h);
       const imageData = ctx.getImageData(0, 0, w, h);
       const pixels = imageData.data;
-      let totalR = 0, totalG = 0, totalB = 0, totalBright = 0;
-      let skinPixels = 0, rednessSum = 0;
       const n = pixels.length / 4;
 
+      // --- Global stats ---
+      let totalR = 0, totalG = 0, totalB = 0, totalBright = 0;
+      let skinPixels = 0, rednessSum = 0;
+      // Per-pixel brightness array for edge/contrast analysis
+      const brightMap = new Float32Array(n);
+
       for (let i = 0; i < pixels.length; i += 4) {
+        const idx = i / 4;
         const r = pixels[i], g = pixels[i+1], b = pixels[i+2];
-        const brightness = (0.299 * r + 0.587 * g + 0.114 * b);
+        const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
+        brightMap[idx] = brightness;
         totalR += r; totalG += g; totalB += b;
         totalBright += brightness;
-        // Skin detection (simplified)
         if (r > 80 && g > 40 && b > 20 && r > g && r > b && (r - g) > 10 && brightness > 50 && brightness < 230) {
           skinPixels++;
           rednessSum += (r - g) / 255;
@@ -246,15 +253,130 @@ const analyzePhoto = (dataUrl) => {
       const skinRatio = skinPixels / n;
       const avgRedness = skinPixels > 0 ? rednessSum / skinPixels : 0;
 
-      // Swelling indicators (higher = more swelling-like)
-      // Puffy faces tend to be: brighter skin, more redness, higher skin area ratio
+      // --- Edge detection (Sobel-like) for muscle definition ---
+      // More edges in skin area = more visible muscle lines/definition
+      let edgeSum = 0, edgeCount = 0;
+      let skinEdgeSum = 0, skinEdgeCount = 0;
+      const edgeMap = new Float32Array(n);
+      for (let y = 1; y < h - 1; y++) {
+        for (let x = 1; x < w - 1; x++) {
+          const idx = y * w + x;
+          // Sobel gradient magnitude
+          const gx = -brightMap[(y-1)*w+(x-1)] - 2*brightMap[y*w+(x-1)] - brightMap[(y+1)*w+(x-1)]
+                     + brightMap[(y-1)*w+(x+1)] + 2*brightMap[y*w+(x+1)] + brightMap[(y+1)*w+(x+1)];
+          const gy = -brightMap[(y-1)*w+(x-1)] - 2*brightMap[(y-1)*w+x] - brightMap[(y-1)*w+(x+1)]
+                     + brightMap[(y+1)*w+(x-1)] + 2*brightMap[(y+1)*w+x] + brightMap[(y+1)*w+(x+1)];
+          const mag = Math.sqrt(gx * gx + gy * gy);
+          edgeMap[idx] = mag;
+          edgeSum += mag;
+          edgeCount++;
+          // Check if this pixel is skin-colored
+          const pi = idx * 4;
+          const r = pixels[pi], g = pixels[pi+1], b = pixels[pi+2];
+          if (r > 80 && g > 40 && b > 20 && r > g && r > b && (r-g) > 10 && brightMap[idx] > 50 && brightMap[idx] < 230) {
+            skinEdgeSum += mag;
+            skinEdgeCount++;
+          }
+        }
+      }
+      const avgEdge = edgeCount > 0 ? edgeSum / edgeCount : 0;
+      const avgSkinEdge = skinEdgeCount > 0 ? skinEdgeSum / skinEdgeCount : 0;
+
+      // --- Region analysis for body photos ---
+      // Split into top/middle/bottom thirds
+      const thirdH = Math.floor(h / 3);
+      const regionStats = (startY, endY) => {
+        let rSum = 0, bSum = 0, brSum = 0, cnt = 0, eSum = 0, skCnt = 0;
+        for (let y = startY; y < endY; y++) {
+          for (let x = 0; x < w; x++) {
+            const idx = y * w + x;
+            const pi = idx * 4;
+            const r = pixels[pi], g = pixels[pi+1], b = pixels[pi+2];
+            const br = brightMap[idx];
+            rSum += r; bSum += b; brSum += br; cnt++;
+            eSum += edgeMap[idx] || 0;
+            if (r > 80 && g > 40 && b > 20 && r > g && r > b && (r-g) > 10 && br > 50 && br < 230) skCnt++;
+          }
+        }
+        return { avgBright: brSum/cnt, avgEdge: eSum/cnt, skinRatio: skCnt/cnt, avgR: rSum/cnt, avgB: bSum/cnt };
+      };
+      const topRegion = regionStats(0, thirdH);
+      const midRegion = regionStats(thirdH, thirdH * 2);
+      const botRegion = regionStats(thirdH * 2, h);
+
+      // --- Local contrast (for pump detection) ---
+      // High local contrast in skin = vascularity/pump; low = flat
+      let contrastSum = 0, contrastCount = 0;
+      const blockSize = 8;
+      for (let by = 0; by < h - blockSize; by += blockSize) {
+        for (let bx = 0; bx < w - blockSize; bx += blockSize) {
+          let bMin = 255, bMax = 0, hasSkin = false;
+          for (let dy = 0; dy < blockSize; dy++) {
+            for (let dx = 0; dx < blockSize; dx++) {
+              const idx = (by+dy) * w + (bx+dx);
+              const br = brightMap[idx];
+              if (br < bMin) bMin = br;
+              if (br > bMax) bMax = br;
+              const pi = idx * 4;
+              const r = pixels[pi], g = pixels[pi+1], b = pixels[pi+2];
+              if (r > 80 && g > 40 && b > 20 && r > g && r > b) hasSkin = true;
+            }
+          }
+          if (hasSkin) {
+            contrastSum += (bMax - bMin);
+            contrastCount++;
+          }
+        }
+      }
+      const localContrast = contrastCount > 0 ? contrastSum / contrastCount : 0;
+
+      // --- Brightness variance in skin (smooth=水腫, textured=definition) ---
+      let brightVarSum = 0, brightVarCnt = 0;
+      for (let i = 0; i < n; i++) {
+        const pi = i * 4;
+        const r = pixels[pi], g = pixels[pi+1], b = pixels[pi+2];
+        if (r > 80 && g > 40 && b > 20 && r > g && r > b && brightMap[i] > 50 && brightMap[i] < 230) {
+          brightVarSum += Math.pow(brightMap[i] - avgBright, 2);
+          brightVarCnt++;
+        }
+      }
+      const skinBrightVar = brightVarCnt > 0 ? Math.sqrt(brightVarSum / brightVarCnt) : 0;
+
+      // === Compute scores ===
       const brightnessScore = Math.min(100, (avgBright / 180) * 100);
       const rednessScore = Math.min(100, avgRedness * 300);
       const puffScore = Math.min(100, skinRatio * 200);
-      const swellingIndex = Math.round((brightnessScore * 0.3 + rednessScore * 0.4 + puffScore * 0.3));
-
-      // Warmth (color temperature)
+      const swellingIndex = Math.round(brightnessScore * 0.3 + rednessScore * 0.4 + puffScore * 0.3);
       const warmth = Math.round(((avgR - avgB) / 255) * 100 + 50);
+
+      // Muscle definition: edge density in skin areas (0-100)
+      // avgSkinEdge typically 5-50 range
+      const definitionScore = Math.min(100, Math.round((avgSkinEdge / 35) * 100));
+
+      // Pump score: local contrast + edge density (higher = more pumped/vascular)
+      // localContrast typically 20-100
+      const pumpRaw = (localContrast / 80) * 50 + (avgSkinEdge / 30) * 30 + (skinBrightVar / 40) * 20;
+      const pumpScore = Math.min(100, Math.max(0, Math.round(pumpRaw)));
+
+      // Water retention (belly area for body) — smooth bright skin in mid region
+      // For face: overall puffiness. For body: mid-region smoothness + brightness
+      let waterScore;
+      if (type === 'body') {
+        // Belly: high brightness + low edge (smooth) + high skin ratio in mid region = water
+        const midSmooth = Math.max(0, 1 - midRegion.avgEdge / 25);
+        const midBright = midRegion.avgBright / 200;
+        const midSkin = midRegion.skinRatio;
+        waterScore = Math.min(100, Math.round((midSmooth * 40 + midBright * 30 + midSkin * 30) * 100));
+      } else {
+        // Face: puffiness = brightness + redness + skin smoothness
+        const faceSmooth = Math.max(0, 1 - avgSkinEdge / 30);
+        waterScore = Math.min(100, Math.round((faceSmooth * 30 + (avgBright/200) * 35 + skinRatio * 35) * 100));
+      }
+
+      // Flat vs pump label
+      const pumpLabel = pumpScore > 65 ? '💪 Pump' : pumpScore > 40 ? '正常' : '😐 Flat';
+      const defLabel = definitionScore > 60 ? '✨ 明顯' : definitionScore > 35 ? '普通' : '不明顯';
+      const waterLabel = waterScore > 60 ? '💧 偏水' : waterScore > 35 ? '輕微' : '✅ 乾爽';
 
       resolve({
         brightness: Math.round(brightnessScore),
@@ -262,6 +384,13 @@ const analyzePhoto = (dataUrl) => {
         swellingIndex: Math.min(100, swellingIndex),
         warmth: Math.min(100, Math.max(0, warmth)),
         skinRatio: Math.round(skinRatio * 100),
+        definitionScore: Math.min(100, definitionScore),
+        pumpScore,
+        waterScore: Math.min(100, waterScore),
+        pumpLabel,
+        defLabel,
+        waterLabel,
+        type: type || 'face',
       });
     };
     img.src = dataUrl;
@@ -339,8 +468,8 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
     setFaceAnalysis(null);
     setBodyAnalysis(null);
     // Auto-analyze if photos exist
-    if (fp) analyzePhoto(fp).then(setFaceAnalysis);
-    if (bp) analyzePhoto(bp).then(setBodyAnalysis);
+    if (fp) analyzePhoto(fp, 'face').then(setFaceAnalysis);
+    if (bp) analyzePhoto(bp, 'body').then(setBodyAnalysis);
   }, [selectedDate, data]);
 
   const changeDate = delta => {
@@ -366,7 +495,7 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
       if (type === 'face') {
         setFacePhoto(compressed);
         savePhoto(selectedDate, 'face', compressed);
-        const analysis = await analyzePhoto(compressed);
+        const analysis = await analyzePhoto(compressed, 'face');
         setFaceAnalysis(analysis);
         // Save analysis in data
         const newData = { ...data };
@@ -377,7 +506,7 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
       } else {
         setBodyPhoto(compressed);
         savePhoto(selectedDate, 'body', compressed);
-        const analysis = await analyzePhoto(compressed);
+        const analysis = await analyzePhoto(compressed, 'body');
         setBodyAnalysis(analysis);
         const newData = { ...data };
         if (!newData[selectedDate]) newData[selectedDate] = { drugs: {}, symptoms: [], note: '' };
@@ -441,16 +570,35 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
     if (!analysis) return null;
     const level = analysis.swellingIndex < 30 ? '正常' : analysis.swellingIndex < 55 ? '輕微' : analysis.swellingIndex < 75 ? '偏高' : '明顯';
     const levelColor = analysis.swellingIndex < 30 ? 'var(--green)' : analysis.swellingIndex < 55 ? 'var(--blue)' : analysis.swellingIndex < 75 ? 'var(--orange)' : 'var(--red)';
+    const pumpColor = (analysis.pumpScore||0) > 65 ? 'var(--green)' : (analysis.pumpScore||0) > 40 ? 'var(--blue)' : 'var(--orange)';
+    const defColor = (analysis.definitionScore||0) > 60 ? 'var(--green)' : (analysis.definitionScore||0) > 35 ? 'var(--blue)' : 'var(--text2)';
+    const waterColor = (analysis.waterScore||0) > 60 ? 'var(--red)' : (analysis.waterScore||0) > 35 ? 'var(--orange)' : 'var(--green)';
+    const isBody = analysis.type === 'body' || title.includes('身');
     return (
       <div className="ai-card">
         <h3>🤖 {title} AI 分析</h3>
-        <div style={{textAlign:'center',marginBottom:12}}>
-          <div style={{fontSize:'2em',fontWeight:700,color:levelColor}}>{analysis.swellingIndex}</div>
-          <div style={{fontSize:'0.85em',color:levelColor}}>腫脹指數 — {level}</div>
+        {/* Main status badges */}
+        <div style={{display:'flex',justifyContent:'center',gap:10,marginBottom:14,flexWrap:'wrap'}}>
+          <div style={{background:'var(--card2)',borderRadius:10,padding:'8px 14px',textAlign:'center',minWidth:80}}>
+            <div style={{fontSize:'1.4em',fontWeight:700,color:pumpColor}}>{analysis.pumpLabel || (analysis.pumpScore > 65 ? '💪 Pump' : analysis.pumpScore > 40 ? '正常' : '😐 Flat')}</div>
+            <div style={{fontSize:'0.7em',color:'var(--text2)',marginTop:2}}>充血狀態</div>
+          </div>
+          <div style={{background:'var(--card2)',borderRadius:10,padding:'8px 14px',textAlign:'center',minWidth:80}}>
+            <div style={{fontSize:'1.4em',fontWeight:700,color:waterColor}}>{analysis.waterLabel || (analysis.waterScore > 60 ? '💧 偏水' : analysis.waterScore > 35 ? '輕微' : '✅ 乾爽')}</div>
+            <div style={{fontSize:'0.7em',color:'var(--text2)',marginTop:2}}>{isBody ? '腹部水腫' : '臉部水腫'}</div>
+          </div>
+          <div style={{background:'var(--card2)',borderRadius:10,padding:'8px 14px',textAlign:'center',minWidth:80}}>
+            <div style={{fontSize:'1.4em',fontWeight:700,color:defColor}}>{analysis.defLabel || (analysis.definitionScore > 60 ? '✨ 明顯' : analysis.definitionScore > 35 ? '普通' : '不明顯')}</div>
+            <div style={{fontSize:'0.7em',color:'var(--text2)',marginTop:2}}>肌肉線條</div>
+          </div>
         </div>
-        <MetricBar label="亮度" value={analysis.brightness} color="var(--blue)" />
+        {/* Detailed metrics */}
+        <MetricBar label="💪 充血度 (Pump)" value={analysis.pumpScore||0} color={pumpColor} />
+        <MetricBar label="📐 肌肉線條" value={analysis.definitionScore||0} color={defColor} />
+        <MetricBar label="💧 水腫程度" value={analysis.waterScore||0} color={waterColor} />
+        <MetricBar label="🔴 腫脹指數" value={analysis.swellingIndex} color={levelColor} />
         <MetricBar label="泛紅" value={analysis.redness} color="var(--red)" />
-        <MetricBar label="膚色佔比" value={analysis.skinRatio} color="var(--orange)" />
+        <MetricBar label="亮度" value={analysis.brightness} color="var(--blue)" />
         <MetricBar label="色溫" value={analysis.warmth} color="var(--pink)" />
       </div>
     );
@@ -916,17 +1064,29 @@ function PhotoTimeline({ data, sortedDates }) {
       data: {
         labels: datesWithAnalysis,
         datasets: [{
-          label: '臉部腫脹指數',
+          label: '💪 充血度',
+          data: datesWithAnalysis.map(d => data[d].faceAnalysis.pumpScore||0),
+          borderColor: '#34d399',
+          backgroundColor: '#34d39922',
+          fill: false, tension: 0.3, pointRadius: 4, pointBackgroundColor: '#34d399'
+        }, {
+          label: '📐 線條',
+          data: datesWithAnalysis.map(d => data[d].faceAnalysis.definitionScore||0),
+          borderColor: '#60a5fa',
+          backgroundColor: '#60a5fa22',
+          fill: false, tension: 0.3, pointRadius: 3, pointBackgroundColor: '#60a5fa'
+        }, {
+          label: '💧 水腫',
+          data: datesWithAnalysis.map(d => data[d].faceAnalysis.waterScore||0),
+          borderColor: '#fb923c',
+          backgroundColor: '#fb923c22',
+          fill: false, tension: 0.3, pointRadius: 3, pointBackgroundColor: '#fb923c'
+        }, {
+          label: '腫脹指數',
           data: datesWithAnalysis.map(d => data[d].faceAnalysis.swellingIndex),
           borderColor: '#a78bfa',
           backgroundColor: '#a78bfa22',
-          fill: true, tension: 0.3, pointRadius: 4, pointBackgroundColor: '#a78bfa'
-        }, {
-          label: '泛紅程度',
-          data: datesWithAnalysis.map(d => data[d].faceAnalysis.redness),
-          borderColor: '#f472b6',
-          backgroundColor: '#f472b622',
-          fill: true, tension: 0.3, pointRadius: 3, pointBackgroundColor: '#f472b6'
+          fill: false, tension: 0.3, pointRadius: 3, pointBackgroundColor: '#a78bfa', hidden: true
         }]
       },
       options: {
@@ -968,7 +1128,7 @@ function PhotoTimeline({ data, sortedDates }) {
               <div className="compare-card" key={p.date}>
                 <img src={p.photo} alt={p.date} />
                 <div className="compare-date">{p.date.slice(5)}</div>
-                {p.analysis && <div className="compare-score">腫脹: {p.analysis.swellingIndex}</div>}
+                {p.analysis && <div className="compare-score">{p.analysis.pumpLabel||''} | 線條:{p.analysis.definitionScore||0} | 水:{p.analysis.waterScore||0}</div>}
               </div>
             ))}
           </div>
@@ -997,22 +1157,22 @@ function PhotoTimeline({ data, sortedDates }) {
               <div style={{flex:1,textAlign:'center'}}>
                 <img src={comparePhoto1.photo} alt={compareDate1} style={{width:'100%',borderRadius:10,border:'2px solid var(--border)'}} />
                 <div style={{fontSize:'0.8em',color:'var(--text2)',marginTop:4}}>{compareDate1}</div>
-                {comparePhoto1.analysis && <div style={{fontSize:'0.8em',color:'var(--purple)'}}>腫脹: {comparePhoto1.analysis.swellingIndex}</div>}
+                {comparePhoto1.analysis && <div style={{fontSize:'0.8em',color:'var(--purple)'}}>{comparePhoto1.analysis.pumpLabel} | 線條:{comparePhoto1.analysis.definitionScore||0} | 水:{comparePhoto1.analysis.waterScore||0}</div>}
               </div>
             )}
             {comparePhoto2 && (
               <div style={{flex:1,textAlign:'center'}}>
                 <img src={comparePhoto2.photo} alt={compareDate2} style={{width:'100%',borderRadius:10,border:'2px solid var(--border)'}} />
                 <div style={{fontSize:'0.8em',color:'var(--text2)',marginTop:4}}>{compareDate2}</div>
-                {comparePhoto2.analysis && <div style={{fontSize:'0.8em',color:'var(--purple)'}}>腫脹: {comparePhoto2.analysis.swellingIndex}</div>}
+                {comparePhoto2.analysis && <div style={{fontSize:'0.8em',color:'var(--purple)'}}>{comparePhoto2.analysis.pumpLabel} | 線條:{comparePhoto2.analysis.definitionScore||0} | 水:{comparePhoto2.analysis.waterScore||0}</div>}
               </div>
             )}
           </div>
           {comparePhoto1?.analysis && comparePhoto2?.analysis && (
             <div style={{marginTop:12,padding:10,background:'var(--card2)',borderRadius:8,fontSize:'0.82em'}}>
               <div style={{fontWeight:600,marginBottom:6,color:'var(--purple)'}}>差異分析</div>
-              {['swellingIndex','brightness','redness','warmth'].map(k => {
-                const labels = {swellingIndex:'腫脹指數',brightness:'亮度',redness:'泛紅',warmth:'色溫'};
+              {['pumpScore','definitionScore','waterScore','swellingIndex','redness','warmth'].map(k => {
+                const labels = {pumpScore:'💪 充血度',definitionScore:'📐 線條',waterScore:'💧 水腫',swellingIndex:'腫脹指數',redness:'泛紅',warmth:'色溫'};
                 const diff = comparePhoto2.analysis[k] - comparePhoto1.analysis[k];
                 return (
                   <div key={k} style={{display:'flex',justifyContent:'space-between',padding:'3px 0'}}>
