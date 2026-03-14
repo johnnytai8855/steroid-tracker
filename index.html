@@ -95,6 +95,17 @@ body{font-family:-apple-system,'Segoe UI',system-ui,sans-serif;background:var(--
 .compare-card img{width:120px;height:160px;object-fit:cover;border-radius:8px;border:2px solid var(--border)}
 .compare-card .compare-date{font-size:0.75em;color:var(--text2);margin-top:4px}
 .compare-card .compare-score{font-size:0.7em;color:var(--purple);margin-top:2px}
+/* Calibration feedback */
+.calib-section{margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
+.calib-section h4{font-size:0.8em;color:var(--text2);margin-bottom:8px}
+.calib-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:0.82em}
+.calib-label{min-width:70px;color:var(--text2);font-size:0.85em}
+.calib-btns{display:flex;gap:4px;flex-wrap:wrap}
+.calib-btn{padding:4px 10px;border-radius:14px;border:1px solid var(--border);background:var(--card2);color:var(--text2);font-size:0.8em;cursor:pointer;transition:all 0.2s}
+.calib-btn.selected{background:var(--purple);color:#fff;border-color:var(--purple)}
+.calib-btn:active{opacity:0.7}
+.calib-saved{font-size:0.75em;color:var(--green);margin-left:6px}
+.calib-badge{display:inline-block;background:var(--purple);color:#fff;font-size:0.6em;padding:1px 5px;border-radius:6px;margin-left:4px;vertical-align:middle}
 .storage-warn{background:var(--card2);border:1px solid var(--orange);border-radius:8px;padding:10px;margin-bottom:14px;font-size:0.82em;color:var(--orange)}
 /* Time period tabs */
 .period-tabs{display:flex;gap:6px;margin-bottom:12px;overflow-x:auto}
@@ -210,6 +221,76 @@ const compressImage = (file, maxWidth = 480, quality = 0.6) => {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+};
+
+// === Calibration / Learning System ===
+// Stores user subjective ratings and computes adaptive offsets
+const CALIB_KEY = 'ai_calibration';
+const CALIB_METRICS = ['pumpScore', 'definitionScore', 'waterScore'];
+// User rates on 5-point scale: maps to score adjustments
+// 1=很低 2=偏低 3=準確 4=偏高 5=很高
+// If user says AI is "偏高" (4), we reduce future scores; "偏低" (2), we increase
+const loadCalibration = () => {
+  try { return JSON.parse(localStorage.getItem(CALIB_KEY) || '{"entries":[],"offsets":{"face":{},"body":{}}}'); }
+  catch { return { entries: [], offsets: { face: {}, body: {} } }; }
+};
+const saveCalibration = (cal) => localStorage.setItem(CALIB_KEY, JSON.stringify(cal));
+
+// Record a user rating and recalculate offsets
+const recordCalibrationEntry = (date, photoType, metric, aiRaw, userRating) => {
+  // userRating: 1-5 (1=AI太低, 2=偏低, 3=準確, 4=偏高, 5=AI太高)
+  // Convert to adjustment direction: 3=no change, <3=AI underestimates, >3=AI overestimates
+  const cal = loadCalibration();
+  // Remove old entry for same date/type/metric
+  cal.entries = cal.entries.filter(e => !(e.date === date && e.type === photoType && e.metric === metric));
+  cal.entries.push({ date, type: photoType, metric, aiRaw, userRating, ts: Date.now() });
+  // Keep last 100 entries max
+  if (cal.entries.length > 100) cal.entries = cal.entries.slice(-100);
+  // Recalculate offsets using exponentially weighted recent entries
+  ['face', 'body'].forEach(t => {
+    if (!cal.offsets[t]) cal.offsets[t] = {};
+    CALIB_METRICS.forEach(m => {
+      const relevant = cal.entries.filter(e => e.type === t && e.metric === m);
+      if (!relevant.length) { cal.offsets[t][m] = 0; return; }
+      // Weight recent entries more (exponential decay, half-life = 10 entries)
+      let wSum = 0, wTotal = 0;
+      relevant.forEach((e, i) => {
+        const w = Math.pow(0.93, relevant.length - 1 - i); // newer = higher weight
+        // userRating 3 = correct, <3 = AI underestimates (need positive offset), >3 = AI overestimates (need negative offset)
+        const delta = (3 - e.userRating) * 12; // each step = ~12 points adjustment
+        wSum += delta * w;
+        wTotal += w;
+      });
+      cal.offsets[t][m] = Math.round(wSum / wTotal);
+    });
+  });
+  saveCalibration(cal);
+  return cal;
+};
+
+// Apply calibration offsets to raw scores
+const applyCalibration = (rawScores, photoType) => {
+  const cal = loadCalibration();
+  const offsets = cal.offsets[photoType] || {};
+  const calibrated = { ...rawScores };
+  CALIB_METRICS.forEach(m => {
+    if (offsets[m]) {
+      calibrated[m] = Math.min(100, Math.max(0, (calibrated[m] || 0) + offsets[m]));
+    }
+  });
+  // Recalculate labels based on calibrated scores
+  calibrated.pumpLabel = calibrated.pumpScore > 65 ? '💪 Pump' : calibrated.pumpScore > 40 ? '正常' : '😐 Flat';
+  calibrated.defLabel = calibrated.definitionScore > 60 ? '✨ 明顯' : calibrated.definitionScore > 35 ? '普通' : '不明顯';
+  calibrated.waterLabel = calibrated.waterScore > 60 ? '💧 偏水' : calibrated.waterScore > 35 ? '輕微' : '✅ 乾爽';
+  calibrated._calibrated = true;
+  calibrated._offsets = offsets;
+  return calibrated;
+};
+
+// Get calibration stats
+const getCalibStats = () => {
+  const cal = loadCalibration();
+  return { count: cal.entries.length, offsets: cal.offsets };
 };
 
 // AI Analysis: compute face/body metrics from image
@@ -378,7 +459,7 @@ const analyzePhoto = (dataUrl, type) => {
       const defLabel = definitionScore > 60 ? '✨ 明顯' : definitionScore > 35 ? '普通' : '不明顯';
       const waterLabel = waterScore > 60 ? '💧 偏水' : waterScore > 35 ? '輕微' : '✅ 乾爽';
 
-      resolve({
+      const rawScores = {
         brightness: Math.round(brightnessScore),
         redness: Math.round(rednessScore),
         swellingIndex: Math.min(100, swellingIndex),
@@ -391,7 +472,11 @@ const analyzePhoto = (dataUrl, type) => {
         defLabel,
         waterLabel,
         type: type || 'face',
-      });
+      };
+      // Apply learned calibration offsets
+      const calibrated = applyCalibration(rawScores, type || 'face');
+      calibrated._raw = { pumpScore, definitionScore, waterScore: Math.min(100, waterScore) };
+      resolve(calibrated);
     };
     img.src = dataUrl;
   });
@@ -532,6 +617,14 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
     }
   };
 
+  // Re-analyze photos after calibration
+  const handleRecalibrate = async () => {
+    const fp = loadPhoto(selectedDate, 'face');
+    const bp = loadPhoto(selectedDate, 'body');
+    if (fp) { const a = await analyzePhoto(fp, 'face'); setFaceAnalysis(a); }
+    if (bp) { const a = await analyzePhoto(bp, 'body'); setBodyAnalysis(a); }
+  };
+
   const handleSave = () => {
     const cleanDrugs = {};
     Object.entries(drugs).forEach(([k, v]) => { if (v && parseFloat(v) > 0) cleanDrugs[k] = parseFloat(v); });
@@ -566,17 +659,44 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
     </div>
   );
 
-  const AnalysisCard = ({ title, analysis }) => {
+  const AnalysisCard = ({ title, analysis, photoType, date, onRecalibrate }) => {
     if (!analysis) return null;
+    const [showCalib, setShowCalib] = useState(false);
+    const [calibRatings, setCalibRatings] = useState({});
+    const [calibSaved, setCalibSaved] = useState(false);
+    const calibStats = getCalibStats();
+    const hasCalib = calibStats.count > 0;
+
     const level = analysis.swellingIndex < 30 ? '正常' : analysis.swellingIndex < 55 ? '輕微' : analysis.swellingIndex < 75 ? '偏高' : '明顯';
     const levelColor = analysis.swellingIndex < 30 ? 'var(--green)' : analysis.swellingIndex < 55 ? 'var(--blue)' : analysis.swellingIndex < 75 ? 'var(--orange)' : 'var(--red)';
     const pumpColor = (analysis.pumpScore||0) > 65 ? 'var(--green)' : (analysis.pumpScore||0) > 40 ? 'var(--blue)' : 'var(--orange)';
     const defColor = (analysis.definitionScore||0) > 60 ? 'var(--green)' : (analysis.definitionScore||0) > 35 ? 'var(--blue)' : 'var(--text2)';
     const waterColor = (analysis.waterScore||0) > 60 ? 'var(--red)' : (analysis.waterScore||0) > 35 ? 'var(--orange)' : 'var(--green)';
     const isBody = analysis.type === 'body' || title.includes('身');
+
+    const ratingOptions = [
+      { value: 1, label: 'AI太低' },
+      { value: 2, label: '偏低' },
+      { value: 3, label: '準確 ✓' },
+      { value: 4, label: '偏高' },
+      { value: 5, label: 'AI太高' },
+    ];
+    const metricLabels = { pumpScore: '充血度', definitionScore: '肌肉線條', waterScore: '水腫程度' };
+
+    const handleCalibSave = () => {
+      Object.entries(calibRatings).forEach(([metric, rating]) => {
+        const rawVal = analysis._raw ? analysis._raw[metric] : (analysis[metric] || 0);
+        recordCalibrationEntry(date, photoType, metric, rawVal, rating);
+      });
+      setCalibSaved(true);
+      setTimeout(() => setCalibSaved(false), 2000);
+      // Trigger re-analysis
+      if (onRecalibrate) onRecalibrate();
+    };
+
     return (
       <div className="ai-card">
-        <h3>🤖 {title} AI 分析</h3>
+        <h3>🤖 {title} AI 分析 {hasCalib && <span className="calib-badge">已學習 {calibStats.count} 筆</span>}</h3>
         {/* Main status badges */}
         <div style={{display:'flex',justifyContent:'center',gap:10,marginBottom:14,flexWrap:'wrap'}}>
           <div style={{background:'var(--card2)',borderRadius:10,padding:'8px 14px',textAlign:'center',minWidth:80}}>
@@ -600,6 +720,41 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
         <MetricBar label="泛紅" value={analysis.redness} color="var(--red)" />
         <MetricBar label="亮度" value={analysis.brightness} color="var(--blue)" />
         <MetricBar label="色溫" value={analysis.warmth} color="var(--pink)" />
+
+        {/* Calibration feedback section */}
+        <div className="calib-section">
+          <button className="calib-btn" style={{width:'100%',padding:'8px',marginBottom:8,fontSize:'0.85em',background: showCalib ? 'var(--purple)' : 'var(--card2)', color: showCalib ? '#fff' : 'var(--text2)'}} onClick={() => setShowCalib(!showCalib)}>
+            🎯 {showCalib ? '收起校準' : '覺得不準？點我教 AI'}
+          </button>
+          {showCalib && (
+            <div>
+              <p style={{fontSize:'0.75em',color:'var(--text2)',marginBottom:8}}>告訴 AI 每項判斷跟你的感覺差多少，AI 會學習你的標準：</p>
+              {CALIB_METRICS.map(metric => (
+                <div className="calib-row" key={metric}>
+                  <span className="calib-label">{metricLabels[metric]}</span>
+                  <div className="calib-btns">
+                    {ratingOptions.map(opt => (
+                      <button key={opt.value} className={`calib-btn ${calibRatings[metric] === opt.value ? 'selected' : ''}`}
+                        onClick={() => setCalibRatings(prev => ({...prev, [metric]: opt.value}))}>
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              <button className="save-btn" style={{marginTop:8,fontSize:'0.9em',padding:'10px'}}
+                onClick={handleCalibSave}
+                disabled={!Object.keys(calibRatings).length}>
+                {calibSaved ? '✓ 已記錄，AI 正在學習！' : '送出校準'}
+              </button>
+              {analysis._offsets && Object.keys(analysis._offsets).some(k => analysis._offsets[k] !== 0) && (
+                <p style={{fontSize:'0.7em',color:'var(--purple)',marginTop:6,textAlign:'center'}}>
+                  目前校準偏移：{Object.entries(analysis._offsets).filter(([,v])=>v!==0).map(([k,v]) => `${metricLabels[k]} ${v>0?'+':''}${v}`).join('、')}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     );
   };
@@ -664,8 +819,8 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
 
       {(faceAnalysis || bodyAnalysis) && (
         <>
-          {faceAnalysis && <AnalysisCard title="臉部" analysis={faceAnalysis} />}
-          {bodyAnalysis && <AnalysisCard title="身材" analysis={bodyAnalysis} />}
+          {faceAnalysis && <AnalysisCard title="臉部" analysis={faceAnalysis} photoType="face" date={selectedDate} onRecalibrate={handleRecalibrate} />}
+          {bodyAnalysis && <AnalysisCard title="身材" analysis={bodyAnalysis} photoType="body" date={selectedDate} onRecalibrate={handleRecalibrate} />}
         </>
       )}
 
