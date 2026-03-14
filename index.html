@@ -135,6 +135,24 @@ body{font-family:-apple-system,'Segoe UI',system-ui,sans-serif;background:var(--
 .period-tab.active{background:var(--blue);color:#fff;border-color:var(--blue)}
 .period-tab .period-count{position:absolute;top:-4px;right:-4px;background:var(--red);color:#fff;font-size:0.65em;width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center}
 .sym-time-label{font-size:0.75em;color:var(--text2);margin-left:4px}
+/* Smart features */
+.briefing{background:linear-gradient(135deg,#1a1d28,#1e2235);border:1px solid var(--blue);border-radius:var(--radius);padding:16px;margin-bottom:14px}
+.briefing h3{color:var(--blue);font-size:0.95em;margin-bottom:10px}
+.briefing-item{padding:6px 0;font-size:0.85em;border-bottom:1px solid var(--border)}
+.briefing-item:last-child{border-bottom:none}
+.pk-curve{background:var(--card);border-radius:var(--radius);padding:16px;margin-bottom:14px;border:1px solid var(--border)}
+.pattern-card{background:var(--card2);border-radius:8px;padding:10px;margin-bottom:8px;font-size:0.85em}
+.pattern-conf{display:inline-block;padding:1px 6px;border-radius:8px;font-size:0.75em;margin-left:4px}
+.blood-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.blood-field{display:flex;flex-direction:column;gap:3px}
+.blood-field label{font-size:0.75em;color:var(--text2)}
+.blood-field input{background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--text);font-size:0.9em;outline:none}
+.blood-field input:focus{border-color:var(--blue)}
+.weight-row{display:flex;gap:10px;align-items:center}
+.weight-row input{flex:1;background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:1em;outline:none}
+.dose-suggest{background:linear-gradient(135deg,#1a2235,#1e1a35);border:1px solid var(--purple);border-radius:var(--radius);padding:14px;margin-top:12px}
+.dose-suggest h4{color:var(--purple);font-size:0.9em;margin-bottom:8px}
+.tab-badge{position:absolute;top:2px;right:2px;width:6px;height:6px;border-radius:50%;background:var(--red)}
 </style>
 </head>
 <body>
@@ -143,13 +161,21 @@ body{font-family:-apple-system,'Segoe UI',system-ui,sans-serif;background:var(--
 const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
 const DRUGS = [
-  { key: 'sus', label: 'Sustanon', unit: 'ml', color: '#60a5fa' },
-  { key: 'mast', label: 'Masteron', unit: 'mg', color: '#f472b6' },
-  { key: 'primo', label: 'Primobolan', unit: 'mg', color: '#34d399' },
-  { key: 'cyp', label: 'Test Cypionate', unit: 'mg', color: '#a78bfa' },
-  { key: 'hcg', label: 'HCG', unit: 'mcg', color: '#c084fc' },
-  { key: 'ai', label: 'Aromasin', unit: '片', color: '#fb923c' },
-  { key: 'cere', label: 'Cerebrolysin', unit: 'mg', color: '#22d3ee' },
+  { key: 'sus', label: 'Sustanon', unit: 'ml', color: '#60a5fa',
+    // Sustanon: 4 esters blend per 1ml=250mg: propionate 30mg(0.8d), phenylprop 60mg(1.5d), isocaproate 60mg(4d), decanoate 100mg(7.5d)
+    pk: { esters: [{mg:30,halfLife:0.8},{mg:60,halfLife:1.5},{mg:60,halfLife:4},{mg:100,halfLife:7.5}], perUnit: 250, aromatize: 0.05 }},
+  { key: 'mast', label: 'Masteron', unit: 'mg', color: '#f472b6',
+    pk: { halfLife: 2.5, perUnit: 1, aromatize: 0 }},
+  { key: 'primo', label: 'Primobolan', unit: 'mg', color: '#34d399',
+    pk: { halfLife: 5, perUnit: 1, aromatize: 0 }},
+  { key: 'cyp', label: 'Test Cypionate', unit: 'mg', color: '#a78bfa',
+    pk: { halfLife: 8, perUnit: 1, aromatize: 0.05 }},
+  { key: 'hcg', label: 'HCG', unit: 'mcg', color: '#c084fc',
+    pk: { halfLife: 1.5, perUnit: 0.001, aromatize: 0.02 }},
+  { key: 'ai', label: 'Aromasin', unit: '片', color: '#fb923c',
+    pk: null }, // AI inhibitor - handled separately
+  { key: 'cere', label: 'Cerebrolysin', unit: 'mg', color: '#22d3ee',
+    pk: null }, // nootropic, no hormonal effect
 ];
 
 // Symptoms organized by category for smarter analysis
@@ -351,6 +377,386 @@ const getCalibStats = () => {
   return { count: cal.entries.length, offsets: cal.offsets };
 };
 
+// === Auto Sleep Import via URL ===
+// iOS Shortcut opens: tracker_url?sleep=BASE64_JSON
+// App detects on load, saves, clears URL
+const autoImportSleepFromURL = (data, saveDataFn) => {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const sleepParam = params.get('sleep');
+    if (!sleepParam) return null;
+    const decoded = JSON.parse(atob(sleepParam));
+    const dateKey = decoded.date || fmt(new Date());
+    const existing = data[dateKey] || { drugs: {}, symptoms: {}, note: '' };
+    const sleep = {
+      bedtime: decoded.bedtime || decoded.sleepStart || '',
+      wakeTime: decoded.wakeTime || decoded.wakeEnd || '',
+      quality: parseInt(decoded.quality) || 0,
+      deep: decoded.deep ? String(parseInt(decoded.deep)) : '',
+      rem: decoded.rem ? String(parseInt(decoded.rem)) : '',
+      light: decoded.light ? String(parseInt(decoded.light)) : '',
+      awake: decoded.awake ? String(parseInt(decoded.awake)) : '',
+      source: decoded.source || 'health',
+    };
+    if (decoded.totalMinutes && !decoded.deep) {
+      const t = parseInt(decoded.totalMinutes);
+      sleep.deep = String(Math.round(t * 0.2));
+      sleep.light = String(Math.round(t * 0.5));
+      sleep.rem = String(Math.round(t * 0.25));
+      sleep.awake = String(Math.round(t * 0.05));
+    }
+    // Auto quality from deep sleep ratio if not provided
+    if (!sleep.quality && sleep.deep && sleep.bedtime && sleep.wakeTime) {
+      const [bh,bm] = sleep.bedtime.split(':').map(Number);
+      const [wh,wm] = sleep.wakeTime.split(':').map(Number);
+      let totalMin = (wh*60+wm)-(bh*60+bm); if(totalMin<=0) totalMin+=1440;
+      const deepRatio = parseInt(sleep.deep) / totalMin;
+      sleep.quality = deepRatio > 0.25 ? 5 : deepRatio > 0.2 ? 4 : deepRatio > 0.15 ? 3 : deepRatio > 0.1 ? 2 : 1;
+    }
+    const newData = { ...data, [dateKey]: { ...existing, sleep, updatedAt: new Date().toISOString() } };
+    saveDataFn(newData);
+    // Clear URL params
+    window.history.replaceState({}, '', window.location.pathname);
+    return { date: dateKey, sleep };
+  } catch (e) { console.error('Auto sleep import error:', e); return null; }
+};
+
+// Also support auto-import weight from URL: ?weight=75.2
+const autoImportWeightFromURL = (data, saveDataFn) => {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const w = params.get('weight');
+    if (!w) return null;
+    const dateKey = fmt(new Date());
+    const existing = data[dateKey] || { drugs: {}, symptoms: {}, note: '' };
+    const newData = { ...data, [dateKey]: { ...existing, weight: parseFloat(w), updatedAt: new Date().toISOString() } };
+    saveDataFn(newData);
+    window.history.replaceState({}, '', window.location.pathname);
+    return parseFloat(w);
+  } catch { return null; }
+};
+
+// === Pharmacokinetic Engine ===
+// Calculate estimated blood levels for each day
+const calcPKLevels = (data, numDays = 30) => {
+  const today_ = new Date();
+  const startDate = new Date(today_);
+  startDate.setDate(startDate.getDate() - numDays);
+
+  const levels = []; // array of { date, totalT, e2estimate, byDrug: {} }
+
+  for (let dayOffset = 0; dayOffset <= numDays + 7; dayOffset++) {
+    const checkDate = new Date(startDate);
+    checkDate.setDate(checkDate.getDate() + dayOffset);
+    const dateStr = fmt(checkDate);
+
+    let totalT = 0;
+    let e2Contribution = 0;
+    const byDrug = {};
+
+    // For each date in data, check if injection happened and calculate remaining level
+    Object.entries(data).forEach(([injDate, entry]) => {
+      if (!entry.drugs) return;
+      const injDay = parseDate(injDate);
+      const daysSince = (checkDate - injDay) / (1000 * 60 * 60 * 24);
+      if (daysSince < 0 || daysSince > 40) return; // too far
+
+      Object.entries(entry.drugs).forEach(([drugKey, dose]) => {
+        if (!dose || dose <= 0) return;
+        const drug = DRUGS.find(d => d.key === drugKey);
+        if (!drug?.pk) return;
+
+        let mgRemaining = 0;
+        if (drug.pk.esters) {
+          // Multi-ester (Sustanon)
+          drug.pk.esters.forEach(ester => {
+            const mgInjected = (dose * ester.mg / drug.pk.perUnit);
+            mgRemaining += mgInjected * Math.pow(0.5, daysSince / ester.halfLife);
+          });
+        } else {
+          const mgInjected = dose * drug.pk.perUnit;
+          mgRemaining += mgInjected * Math.pow(0.5, daysSince / drug.pk.halfLife);
+        }
+
+        if (!byDrug[drugKey]) byDrug[drugKey] = 0;
+        byDrug[drugKey] += mgRemaining;
+        totalT += mgRemaining;
+        e2Contribution += mgRemaining * (drug.pk.aromatize || 0);
+      });
+
+      // AI (Aromasin) effect: reduces E2 by ~85% for ~3 days
+      if (entry.drugs.ai && entry.drugs.ai > 0) {
+        const daysSinceAI = daysSince;
+        if (daysSinceAI >= 0 && daysSinceAI < 3) {
+          e2Contribution *= 0.15; // 85% reduction
+        } else if (daysSinceAI >= 3 && daysSinceAI < 5) {
+          e2Contribution *= 0.5; // partial recovery
+        }
+      }
+    });
+
+    levels.push({ date: dateStr, totalT: Math.round(totalT * 10) / 10, e2: Math.round(e2Contribution * 100) / 100, byDrug });
+  }
+  return levels;
+};
+
+// === Pattern Recognition Engine ===
+const detectPatterns = (data) => {
+  const dates = Object.keys(data).sort();
+  if (dates.length < 5) return [];
+  const patterns = [];
+
+  // Pattern 1: Drug dose → symptom correlation with time lag
+  DRUGS.forEach(drug => {
+    if (!drug.pk) return;
+    SYMPTOMS.filter(s => s.type === 'negative').forEach(sym => {
+      // Check 0-4 day lag
+      for (let lag = 0; lag <= 4; lag++) {
+        let highDoseWithSym = 0, highDoseNoSym = 0, lowDoseWithSym = 0, lowDoseNoSym = 0;
+        const doseValues = dates.map(d => data[d]?.drugs?.[drug.key] || 0).filter(v => v > 0);
+        if (doseValues.length < 3) continue;
+        const medianDose = doseValues.sort((a,b)=>a-b)[Math.floor(doseValues.length/2)];
+
+        dates.forEach((date, i) => {
+          const dose = data[date]?.drugs?.[drug.key] || 0;
+          if (dose === 0) return;
+          const targetIdx = i + lag;
+          if (targetIdx >= dates.length) return;
+          const targetDate = dates[targetIdx];
+          const hasSym = flattenSymptoms(data[targetDate]?.symptoms).includes(sym.key);
+          const highDose = dose >= medianDose;
+          if (highDose && hasSym) highDoseWithSym++;
+          else if (highDose && !hasSym) highDoseNoSym++;
+          else if (!highDose && hasSym) lowDoseWithSym++;
+          else lowDoseNoSym++;
+        });
+
+        const totalHigh = highDoseWithSym + highDoseNoSym;
+        const totalLow = lowDoseWithSym + lowDoseNoSym;
+        if (totalHigh < 2 || totalLow < 2) continue;
+
+        const highRate = highDoseWithSym / totalHigh;
+        const lowRate = lowDoseWithSym / totalLow;
+        if (highRate > lowRate + 0.25 && highRate > 0.4) {
+          patterns.push({
+            type: 'drug_symptom',
+            drug: drug.label,
+            symptom: sym.label,
+            lag,
+            highRate: Math.round(highRate * 100),
+            lowRate: Math.round(lowRate * 100),
+            confidence: Math.min(95, Math.round((highRate - lowRate) * 100 + totalHigh * 2)),
+            text: `${drug.label} 劑量偏高時，${lag > 0 ? lag + '天後' : '當天'}出現「${sym.label}」的機率 ${Math.round(highRate*100)}%（低劑量時 ${Math.round(lowRate*100)}%）`
+          });
+        }
+      }
+    });
+  });
+
+  // Pattern 2: Sleep → symptom next day
+  const sleepDates = dates.filter(d => data[d]?.sleep?.bedtime && data[d]?.sleep?.wakeTime);
+  if (sleepDates.length >= 5) {
+    const sleepHours = {};
+    sleepDates.forEach(d => {
+      const s = data[d].sleep;
+      const [bh,bm] = s.bedtime.split(':').map(Number);
+      const [wh,wm] = s.wakeTime.split(':').map(Number);
+      let mins = (wh*60+wm)-(bh*60+bm); if(mins<=0) mins+=1440;
+      sleepHours[d] = mins / 60;
+    });
+    const avgSleep = Object.values(sleepHours).reduce((a,b)=>a+b,0) / Object.values(sleepHours).length;
+
+    SYMPTOMS.filter(s => s.type === 'negative').forEach(sym => {
+      let badSleepWithSym = 0, badSleepNoSym = 0, goodSleepWithSym = 0, goodSleepNoSym = 0;
+      sleepDates.forEach(d => {
+        const nextIdx = dates.indexOf(d) + 1;
+        if (nextIdx >= dates.length) return;
+        const nextDate = dates[nextIdx];
+        const hasSym = flattenSymptoms(data[nextDate]?.symptoms).includes(sym.key);
+        const badSleep = sleepHours[d] < avgSleep - 0.5;
+        if (badSleep && hasSym) badSleepWithSym++;
+        else if (badSleep && !hasSym) badSleepNoSym++;
+        else if (!badSleep && hasSym) goodSleepWithSym++;
+        else goodSleepNoSym++;
+      });
+      const totalBad = badSleepWithSym + badSleepNoSym;
+      const totalGood = goodSleepWithSym + goodSleepNoSym;
+      if (totalBad < 2 || totalGood < 2) return;
+      const badRate = badSleepWithSym / totalBad;
+      const goodRate = goodSleepWithSym / totalGood;
+      if (badRate > goodRate + 0.2 && badRate > 0.35) {
+        patterns.push({
+          type: 'sleep_symptom',
+          symptom: sym.label,
+          badRate: Math.round(badRate * 100),
+          goodRate: Math.round(goodRate * 100),
+          confidence: Math.min(90, Math.round((badRate - goodRate) * 100 + totalBad * 2)),
+          text: `睡不好的隔天出現「${sym.label}」機率 ${Math.round(badRate*100)}%（睡好時 ${Math.round(goodRate*100)}%）`
+        });
+      }
+    });
+  }
+
+  // Pattern 3: Injection timing patterns
+  DRUGS.forEach(drug => {
+    const injDates = dates.filter(d => (data[d]?.drugs?.[drug.key] || 0) > 0);
+    if (injDates.length < 3) return;
+    const gaps = [];
+    for (let i = 1; i < injDates.length; i++) {
+      const d1 = parseDate(injDates[i-1]), d2 = parseDate(injDates[i]);
+      gaps.push(Math.round((d2 - d1) / (1000*60*60*24)));
+    }
+    const avgGap = gaps.reduce((a,b)=>a+b,0) / gaps.length;
+    patterns.push({
+      type: 'schedule',
+      drug: drug.label,
+      avgGap: avgGap.toFixed(1),
+      text: `${drug.label} 平均每 ${avgGap.toFixed(1)} 天注射一次`,
+      confidence: 100
+    });
+  });
+
+  return patterns.sort((a,b) => b.confidence - a.confidence);
+};
+
+// === Smart Daily Briefing ===
+const generateBriefing = (data, selectedDate) => {
+  const items = [];
+  const entry = data[selectedDate] || {};
+  const dates = Object.keys(data).sort();
+  const dateIdx = dates.indexOf(selectedDate);
+  const todayDate = parseDate(selectedDate);
+
+  // 1. PK level status
+  const levels = calcPKLevels(data, 14);
+  const todayLevel = levels.find(l => l.date === selectedDate);
+  if (todayLevel && todayLevel.totalT > 0) {
+    const maxT = Math.max(...levels.map(l => l.totalT));
+    const minT = Math.min(...levels.filter(l => l.totalT > 0).map(l => l.totalT));
+    const pctOfRange = maxT > minT ? ((todayLevel.totalT - minT) / (maxT - minT) * 100).toFixed(0) : 50;
+    const phase = pctOfRange > 70 ? '📈 波峰附近' : pctOfRange > 30 ? '➡️ 穩定區間' : '📉 波谷';
+    items.push({ icon: '💉', text: `預估體內活性 T: ${todayLevel.totalT}mg — ${phase}`, color: pctOfRange > 70 ? 'var(--green)' : pctOfRange > 30 ? 'var(--blue)' : 'var(--orange)' });
+    if (todayLevel.e2 > 0) {
+      items.push({ icon: '🔬', text: `E2 貢獻指數: ${todayLevel.e2.toFixed(1)} — ${todayLevel.e2 > 3 ? '⚠️ 偏高，留意水腫' : '正常範圍'}`, color: todayLevel.e2 > 3 ? 'var(--orange)' : 'var(--green)' });
+    }
+  }
+
+  // 2. Days since last injection for each drug
+  DRUGS.forEach(drug => {
+    const lastInj = dates.filter(d => d <= selectedDate && (data[d]?.drugs?.[drug.key] || 0) > 0).pop();
+    if (lastInj) {
+      const daysSince = Math.round((todayDate - parseDate(lastInj)) / (1000*60*60*24));
+      if (daysSince <= 14 && daysSince > 0) {
+        items.push({ icon: '📅', text: `距離上次 ${drug.label}: ${daysSince} 天`, color: 'var(--text2)' });
+      }
+    }
+  });
+
+  // 3. Sleep last night
+  const yesterday = fmt(new Date(todayDate.getTime() - 86400000));
+  const sleepEntry = entry.sleep || data[yesterday]?.sleep;
+  if (sleepEntry?.bedtime && sleepEntry?.wakeTime) {
+    const [bh,bm] = sleepEntry.bedtime.split(':').map(Number);
+    const [wh,wm] = sleepEntry.wakeTime.split(':').map(Number);
+    let mins = (wh*60+wm)-(bh*60+bm); if(mins<=0) mins+=1440;
+    const hrs = (mins/60).toFixed(1);
+    const quality = sleepEntry.quality ? ['','😫','😕','😐','🙂','😴'][sleepEntry.quality] : '';
+    items.push({ icon: '😴', text: `昨晚睡 ${hrs} 小時 ${quality}${parseFloat(hrs) < 6 ? ' ⚠️ 睡眠不足，今天可能疲累/水腫' : ''}`, color: parseFloat(hrs) < 6 ? 'var(--orange)' : 'var(--green)' });
+  }
+
+  // 4. Weight trend
+  const recentWeights = dates.filter(d => d <= selectedDate && data[d]?.weight).slice(-7);
+  if (recentWeights.length >= 2) {
+    const latest = data[recentWeights[recentWeights.length-1]].weight;
+    const prev = data[recentWeights[0]].weight;
+    const diff = (latest - prev).toFixed(1);
+    items.push({ icon: '⚖️', text: `體重 ${latest}kg（${parseFloat(diff) >= 0 ? '+' : ''}${diff}kg 近${recentWeights.length}天）`, color: Math.abs(parseFloat(diff)) > 1 ? 'var(--orange)' : 'var(--text2)' });
+  }
+
+  // 5. Recent symptom trend
+  const recent3 = dates.filter(d => d <= selectedDate).slice(-3);
+  const recentNeg = {};
+  recent3.forEach(d => {
+    flattenSymptoms(data[d]?.symptoms).forEach(s => {
+      const sym = SYMPTOMS.find(x => x.key === s);
+      if (sym?.type === 'negative') recentNeg[s] = (recentNeg[s]||0) + 1;
+    });
+  });
+  const frequent = Object.entries(recentNeg).filter(([,c]) => c >= 2).map(([k]) => SYMPTOMS.find(s=>s.key===k)?.label).filter(Boolean);
+  if (frequent.length) {
+    items.push({ icon: '⚠️', text: `近3天反覆出現：${frequent.join('、')}`, color: 'var(--red)' });
+  }
+
+  return items;
+};
+
+// === AI Dosage Suggestion ===
+const generateDoseSuggestion = (data) => {
+  const dates = Object.keys(data).sort();
+  if (dates.length < 7) return null;
+  const recent = dates.slice(-14);
+  const suggestions = [];
+
+  // Count category symptoms
+  const catCounts = {};
+  SYMPTOM_CATEGORIES.forEach(c => { catCounts[c.key] = { pos: 0, neg: 0 }; });
+  recent.forEach(d => {
+    flattenSymptoms(data[d]?.symptoms).forEach(s => {
+      const sym = SYMPTOMS.find(x => x.key === s);
+      if (sym) { catCounts[sym.cat][sym.type === 'positive' ? 'pos' : 'neg']++; }
+    });
+  });
+
+  // E2 analysis
+  if (catCounts.estrogen.neg >= 4) {
+    suggestions.push({ type: 'warning', text: '🔴 E2 相關症狀頻繁 — 考慮：降低睾酮劑量、增加注射頻率（減少峰值）、或酌量使用 AI' });
+  }
+
+  // Joint dryness = E2 too low (maybe too much AI)
+  const jointDry = recent.filter(d => flattenSymptoms(data[d]?.symptoms).includes('joint_stiff')).length;
+  if (jointDry >= 3 && recent.some(d => (data[d]?.drugs?.ai || 0) > 0)) {
+    suggestions.push({ type: 'warning', text: '🦴 關節卡 + 有使用 AI — 可能 E2 壓太低，考慮減少 AI 用量' });
+  }
+
+  // Sexual function down
+  if (catCounts.sexual.neg >= 3) {
+    suggestions.push({ type: 'warning', text: '🔥 性功能下降 — 可能 E2 失衡（過高或過低都會影響），建議抽血確認' });
+  }
+
+  // Mood issues
+  if (catCounts.mood_energy.neg >= 5) {
+    suggestions.push({ type: 'info', text: '🧠 精神狀態不穩定 — 考慮：檢查睡眠品質、穩定注射頻率、確認 E2 水平' });
+  }
+
+  // Skin/DHT
+  if (catCounts.skin_hair.neg >= 3) {
+    suggestions.push({ type: 'info', text: '💆 皮膚/掉髮問題 — 可能 DHT 偏高，Masteron 會加重此問題' });
+  }
+
+  // Injection frequency suggestion based on PK
+  const levels = calcPKLevels(data, 14);
+  const activeLevels = levels.filter(l => l.totalT > 0);
+  if (activeLevels.length >= 7) {
+    const max = Math.max(...activeLevels.map(l => l.totalT));
+    const min = Math.min(...activeLevels.map(l => l.totalT));
+    const fluctuation = max > 0 ? ((max - min) / max * 100).toFixed(0) : 0;
+    if (fluctuation > 60) {
+      suggestions.push({ type: 'info', text: `📊 血濃度波動 ${fluctuation}% — 波動偏大，考慮增加注射頻率（如每3天改為隔天）來減少副作用` });
+    }
+  }
+
+  // Good status
+  if (!suggestions.length && recent.length >= 7) {
+    const posTotal = Object.values(catCounts).reduce((s, c) => s + c.pos, 0);
+    const negTotal = Object.values(catCounts).reduce((s, c) => s + c.neg, 0);
+    if (posTotal > negTotal) {
+      suggestions.push({ type: 'good', text: '✅ 目前狀態看起來不錯！正面反應多於負面，建議維持目前方案' });
+    }
+  }
+
+  return suggestions;
+};
+
 // AI Analysis: compute face/body metrics from image
 const analyzePhoto = (dataUrl, type) => {
   // type: 'face' or 'body'
@@ -547,9 +953,26 @@ function App() {
   const [calMonth, setCalMonth] = useState(() => { const d = new Date(); return [d.getFullYear(), d.getMonth()]; });
   const [saveStatus, setSaveStatus] = useState('');
 
+  const [autoImportMsg, setAutoImportMsg] = useState('');
+
   const updateData = useCallback((newData) => {
     setData(newData);
     saveData(newData);
+  }, []);
+
+  // Auto-import sleep/weight from URL on first load
+  useEffect(() => {
+    const currentData = loadData();
+    const sleepResult = autoImportSleepFromURL(currentData, d => { setData(d); saveData(d); });
+    if (sleepResult) {
+      setAutoImportMsg(`✓ 已自動匯入 ${sleepResult.date} 睡眠資料`);
+      setTimeout(() => setAutoImportMsg(''), 4000);
+    }
+    const weightResult = autoImportWeightFromURL(currentData, d => { setData(d); saveData(d); });
+    if (weightResult) {
+      setAutoImportMsg(`✓ 已自動匯入體重 ${weightResult}kg`);
+      setTimeout(() => setAutoImportMsg(''), 4000);
+    }
   }, []);
 
   // Icons
@@ -565,14 +988,20 @@ function App() {
         <span style={{color:'var(--text2)',fontSize:'0.85em'}}>{selectedDate}</span>
       </div>
 
+      {autoImportMsg && (
+        <div style={{position:'fixed',top:60,left:'50%',transform:'translateX(-50%)',background:'var(--green)',color:'#fff',padding:'10px 20px',borderRadius:10,zIndex:999,fontSize:'0.9em',boxShadow:'0 4px 12px rgba(0,0,0,0.3)'}}>{autoImportMsg}</div>
+      )}
+
       {tab === 'record' && <RecordPage data={data} updateData={updateData} selectedDate={selectedDate} setSelectedDate={setSelectedDate} saveStatus={saveStatus} setSaveStatus={setSaveStatus} />}
       {tab === 'calendar' && <CalendarPage data={data} calMonth={calMonth} setCalMonth={setCalMonth} selectedDate={selectedDate} setSelectedDate={setSelectedDate} setTab={setTab} />}
+      {tab === 'smart' && <SmartPage data={data} updateData={updateData} selectedDate={selectedDate} />}
       {tab === 'chart' && <ChartPage data={data} />}
       {tab === 'more' && <MorePage data={data} updateData={updateData} />}
 
       <div className="tabs">
         <button className={`tab ${tab==='record'?'active':''}`} onClick={()=>setTab('record')}><RecordIcon />紀錄</button>
         <button className={`tab ${tab==='calendar'?'active':''}`} onClick={()=>setTab('calendar')}><CalIcon />日曆</button>
+        <button className={`tab ${tab==='smart'?'active':''}`} onClick={()=>setTab('smart')} style={{position:'relative'}}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>智慧</button>
         <button className={`tab ${tab==='chart'?'active':''}`} onClick={()=>setTab('chart')}><ChartIcon />分析</button>
         <button className={`tab ${tab==='more'?'active':''}`} onClick={()=>setTab('more')}><MoreIcon />更多</button>
       </div>
@@ -592,6 +1021,8 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
   const [faceAnalysis, setFaceAnalysis] = useState(null);
   const [bodyAnalysis, setBodyAnalysis] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
+  // Weight tracking
+  const [weight, setWeight] = useState(entry.weight || '');
   // Sleep tracking
   const defaultSleep = { bedtime: '', wakeTime: '', quality: 0, deep: '', rem: '', light: '', awake: '', note: '', source: 'manual' };
   const [sleep, setSleep] = useState(() => ({ ...defaultSleep, ...(entry.sleep || {}) }));
@@ -606,6 +1037,7 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
     setSymptoms(normalizeSymptoms(e.symptoms));
     setActivePeriod('allday');
     setNote(e.note || '');
+    setWeight(e.weight || '');
     setSleep({ ...defaultSleep, ...(e.sleep || {}) });
     setSleepImportMsg('');
     setSaveStatus('');
@@ -698,8 +1130,9 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
     Object.entries(drugTimes).forEach(([k, v]) => { if (v && cleanDrugs[k]) cleanTimes[k] = v; });
     const hasSleep = sleep.bedtime || sleep.wakeTime || sleep.quality;
     const cleanSleep = hasSleep ? sleep : undefined;
-    const newData = { ...data, [selectedDate]: { ...existing, drugs: cleanDrugs, drugTimes: cleanTimes, symptoms, note, sleep: cleanSleep, updatedAt: new Date().toISOString() } };
-    if (!hasAnySymptoms && !Object.keys(cleanDrugs).length && !note && !existing.hasPhotos && !hasSleep) delete newData[selectedDate];
+    const cleanWeight = weight ? parseFloat(weight) : undefined;
+    const newData = { ...data, [selectedDate]: { ...existing, drugs: cleanDrugs, drugTimes: cleanTimes, symptoms, note, sleep: cleanSleep, weight: cleanWeight, updatedAt: new Date().toISOString() } };
+    if (!hasAnySymptoms && !Object.keys(cleanDrugs).length && !note && !existing.hasPhotos && !hasSleep && !cleanWeight) delete newData[selectedDate];
     updateData(newData);
     setSaveStatus('saved');
     setTimeout(() => setSaveStatus(''), 1500);
@@ -833,6 +1266,22 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
         <button onClick={() => changeDate(1)}>後一天 ▶</button>
       </div>
 
+      {/* Smart Daily Briefing */}
+      {(() => {
+        const briefingItems = generateBriefing(data, selectedDate);
+        if (!briefingItems.length) return null;
+        return (
+          <div className="briefing">
+            <h3>🧠 今日智慧摘要</h3>
+            {briefingItems.map((item, i) => (
+              <div className="briefing-item" key={i} style={{color: item.color}}>
+                {item.icon} {item.text}
+              </div>
+            ))}
+          </div>
+        );
+      })()}
+
       {storageWarn && (
         <div className="storage-warn">⚠️ 儲存空間已用 {storageMB}MB，接近上限。建議匯出備份後清理舊照片。</div>
       )}
@@ -948,6 +1397,24 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
             </div>
           );
         })}
+      </div>
+
+      <div className="card">
+        <h3>⚖️ 體重</h3>
+        <div className="weight-row">
+          <input type="number" step="0.1" inputMode="decimal" placeholder="今日體重"
+            value={weight} onChange={e => setWeight(e.target.value)} />
+          <span style={{color:'var(--text2)',fontSize:'0.9em'}}>kg</span>
+        </div>
+        {(() => {
+          const dates = Object.keys(data).sort().filter(d => d < selectedDate && data[d]?.weight);
+          if (!dates.length || !weight) return null;
+          const prev = data[dates[dates.length-1]].weight;
+          const diff = (parseFloat(weight) - prev).toFixed(1);
+          return <div style={{fontSize:'0.8em',color: Math.abs(diff) > 0.5 ? 'var(--orange)' : 'var(--text2)',marginTop:6}}>
+            較上次 ({dates[dates.length-1].slice(5)}) {diff > 0 ? '+' : ''}{diff}kg
+          </div>;
+        })()}
       </div>
 
       <div className="card">
@@ -1542,6 +2009,302 @@ function ChartPage({ data }) {
             );
           })()}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// === SMART PAGE: PK Curve, Patterns, Blood Work, Dose Suggestions ===
+function SmartPage({ data, updateData, selectedDate }) {
+  const pkChartRef = useRef(null);
+  const pkChart = useRef(null);
+  const weightChartRef = useRef(null);
+  const weightChart = useRef(null);
+  const sortedDates = useMemo(() => Object.keys(data).sort(), [data]);
+
+  // Blood work state
+  const [bloodWork, setBloodWork] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('blood_work') || '[]'); } catch { return []; }
+  });
+  const [showBloodForm, setShowBloodForm] = useState(false);
+  const [bloodForm, setBloodForm] = useState({ date: today(), totalT: '', freeT: '', e2: '', shbg: '', hct: '', psa: '', prolactin: '', note: '' });
+
+  const saveBloodWork = (bw) => {
+    setBloodWork(bw);
+    localStorage.setItem('blood_work', JSON.stringify(bw));
+  };
+
+  // PK Chart
+  useEffect(() => {
+    const levels = calcPKLevels(data, 21);
+    const validLevels = levels.filter(l => l.totalT > 0 || levels.indexOf(l) > levels.length - 22);
+    if (!validLevels.length || !pkChartRef.current) return;
+
+    if (pkChart.current) pkChart.current.destroy();
+
+    const datasets = [{
+      label: '總活性 T (mg)',
+      data: validLevels.map(l => l.totalT),
+      borderColor: '#60a5fa',
+      backgroundColor: '#60a5fa22',
+      fill: true, tension: 0.4, pointRadius: 2, yAxisID: 'y'
+    }, {
+      label: 'E2 貢獻指數',
+      data: validLevels.map(l => l.e2),
+      borderColor: '#f472b6',
+      backgroundColor: '#f472b622',
+      fill: true, tension: 0.4, pointRadius: 2, yAxisID: 'y1'
+    }];
+
+    // Add individual drug lines
+    DRUGS.filter(d => d.pk).forEach(drug => {
+      const hasData = validLevels.some(l => (l.byDrug[drug.key] || 0) > 0.1);
+      if (!hasData) return;
+      datasets.push({
+        label: drug.label,
+        data: validLevels.map(l => l.byDrug[drug.key] || 0),
+        borderColor: drug.color,
+        borderDash: [4, 4],
+        tension: 0.4, pointRadius: 0, borderWidth: 1, hidden: true
+      });
+    });
+
+    // Mark injection days
+    const injDates = validLevels.filter(l => {
+      const e = data[l.date];
+      return e && Object.entries(e.drugs || {}).some(([k,v]) => v > 0 && DRUGS.find(d=>d.key===k)?.pk);
+    }).map(l => l.date);
+
+    pkChart.current = new Chart(pkChartRef.current, {
+      type: 'line',
+      data: { labels: validLevels.map(l => l.date.slice(5)), datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { color: '#ccc', font: { size: 9 } } },
+          annotation: injDates.length ? undefined : undefined // placeholder
+        },
+        scales: {
+          x: { ticks: { color: '#888', maxTicksLimit: 10 }, grid: { color: '#222' } },
+          y: { title: { display: true, text: 'T (mg)', color: '#60a5fa' }, ticks: { color: '#60a5fa' }, grid: { color: '#222' } },
+          y1: { position: 'right', title: { display: true, text: 'E2 指數', color: '#f472b6' }, ticks: { color: '#f472b6' }, grid: { display: false } }
+        }
+      }
+    });
+
+    return () => { if (pkChart.current) pkChart.current.destroy(); };
+  }, [data]);
+
+  // Weight chart
+  useEffect(() => {
+    const weightDates = sortedDates.filter(d => data[d]?.weight);
+    if (weightDates.length < 2 || !weightChartRef.current) return;
+    if (weightChart.current) weightChart.current.destroy();
+    weightChart.current = new Chart(weightChartRef.current, {
+      type: 'line',
+      data: {
+        labels: weightDates.map(d => d.slice(5)),
+        datasets: [{
+          label: '體重 (kg)',
+          data: weightDates.map(d => data[d].weight),
+          borderColor: '#fbbf24',
+          backgroundColor: '#fbbf2422',
+          fill: true, tension: 0.3, pointRadius: 4, pointBackgroundColor: '#fbbf24'
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: '#ccc', font: { size: 10 } } } },
+        scales: {
+          x: { ticks: { color: '#888', maxTicksLimit: 10 }, grid: { color: '#222' } },
+          y: { ticks: { color: '#888' }, grid: { color: '#222' } }
+        }
+      }
+    });
+    return () => { if (weightChart.current) weightChart.current.destroy(); };
+  }, [data, sortedDates]);
+
+  // Pattern detection
+  const patterns = useMemo(() => detectPatterns(data), [data]);
+  const doseSuggestions = useMemo(() => generateDoseSuggestion(data), [data]);
+
+  const addBloodWork = () => {
+    const entry = { ...bloodForm };
+    Object.keys(entry).forEach(k => {
+      if (k !== 'date' && k !== 'note' && entry[k]) entry[k] = parseFloat(entry[k]) || entry[k];
+    });
+    const updated = [...bloodWork.filter(b => b.date !== entry.date), entry].sort((a,b) => a.date.localeCompare(b.date));
+    saveBloodWork(updated);
+    setShowBloodForm(false);
+    setBloodForm({ date: today(), totalT: '', freeT: '', e2: '', shbg: '', hct: '', psa: '', prolactin: '', note: '' });
+  };
+
+  return (
+    <div className="page">
+      {/* Pharmacokinetic Curve */}
+      <div className="card">
+        <h3>💉 藥物動力學曲線</h3>
+        <p style={{fontSize:'0.78em',color:'var(--text2)',marginBottom:8}}>根據注射紀錄，預估體內睾酮和 E2 濃度變化</p>
+        <div className="chart-container"><canvas ref={pkChartRef}></canvas></div>
+        <div style={{fontSize:'0.7em',color:'var(--text2)',marginTop:6}}>
+          * 預估值僅供參考，實際血濃度受個體代謝、SHBG、注射深度等因素影響
+        </div>
+      </div>
+
+      {/* Weight Trend */}
+      <div className="card">
+        <h3>⚖️ 體重趨勢</h3>
+        {sortedDates.filter(d => data[d]?.weight).length < 2 ?
+          <p style={{color:'var(--text2)',fontSize:'0.9em'}}>在每日紀錄中填入體重，2筆以上即可顯示趨勢</p> :
+          <div className="chart-container"><canvas ref={weightChartRef}></canvas></div>
+        }
+      </div>
+
+      {/* Pattern Recognition */}
+      <div className="card">
+        <h3>🔍 智慧模式辨識</h3>
+        {patterns.length === 0 ? (
+          <p style={{color:'var(--text2)',fontSize:'0.9em'}}>需要更多天數資料才能辨識模式（至少 5 天）</p>
+        ) : (
+          <>
+            <p style={{fontSize:'0.78em',color:'var(--text2)',marginBottom:8}}>AI 從你的歷史紀錄中發現的規律：</p>
+            {patterns.filter(p => p.type !== 'schedule').map((p, i) => (
+              <div className="pattern-card" key={i}>
+                <div>{p.text}</div>
+                <span className="pattern-conf" style={{background: p.confidence > 70 ? 'var(--green)' : p.confidence > 50 ? 'var(--blue)' : 'var(--text2)', color: '#fff'}}>
+                  信心度 {p.confidence}%
+                </span>
+              </div>
+            ))}
+            {patterns.filter(p => p.type === 'schedule').length > 0 && (
+              <div style={{marginTop:8}}>
+                <div style={{fontSize:'0.82em',color:'var(--text2)',marginBottom:4}}>📅 注射排程：</div>
+                {patterns.filter(p => p.type === 'schedule').map((p, i) => (
+                  <div key={`s${i}`} style={{fontSize:'0.85em',padding:'3px 0'}}>{p.text}</div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Dosage Suggestion */}
+      {doseSuggestions && doseSuggestions.length > 0 && (
+        <div className="dose-suggest">
+          <h4>💡 AI 劑量建議</h4>
+          {doseSuggestions.map((s, i) => (
+            <div key={i} style={{fontSize:'0.85em',padding:'4px 0',color: s.type === 'warning' ? 'var(--orange)' : s.type === 'good' ? 'var(--green)' : 'var(--text)'}}>
+              {s.text}
+            </div>
+          ))}
+          <div style={{fontSize:'0.7em',color:'var(--text2)',marginTop:8}}>* 僅供參考，請勿自行調整處方藥劑量，務必諮詢醫師</div>
+        </div>
+      )}
+
+      {/* Blood Work */}
+      <div className="card">
+        <h3>🩸 血液報告</h3>
+        <button className="action-btn" style={{marginBottom:10}} onClick={() => setShowBloodForm(!showBloodForm)}>
+          {showBloodForm ? '收起' : '+ 新增血液報告'}
+        </button>
+        {showBloodForm && (
+          <div style={{marginBottom:12}}>
+            <div className="blood-grid">
+              <div className="blood-field">
+                <label>日期</label>
+                <input type="date" value={bloodForm.date} onChange={e => setBloodForm(f => ({...f, date: e.target.value}))} />
+              </div>
+              <div className="blood-field">
+                <label>Total T (ng/dL)</label>
+                <input type="number" inputMode="decimal" placeholder="例: 800" value={bloodForm.totalT} onChange={e => setBloodForm(f => ({...f, totalT: e.target.value}))} />
+              </div>
+              <div className="blood-field">
+                <label>Free T (pg/mL)</label>
+                <input type="number" inputMode="decimal" placeholder="例: 15" value={bloodForm.freeT} onChange={e => setBloodForm(f => ({...f, freeT: e.target.value}))} />
+              </div>
+              <div className="blood-field">
+                <label>E2 (pg/mL)</label>
+                <input type="number" inputMode="decimal" placeholder="例: 30" value={bloodForm.e2} onChange={e => setBloodForm(f => ({...f, e2: e.target.value}))} />
+              </div>
+              <div className="blood-field">
+                <label>SHBG (nmol/L)</label>
+                <input type="number" inputMode="decimal" placeholder="例: 35" value={bloodForm.shbg} onChange={e => setBloodForm(f => ({...f, shbg: e.target.value}))} />
+              </div>
+              <div className="blood-field">
+                <label>HCT (%)</label>
+                <input type="number" inputMode="decimal" placeholder="例: 47" value={bloodForm.hct} onChange={e => setBloodForm(f => ({...f, hct: e.target.value}))} />
+              </div>
+              <div className="blood-field">
+                <label>PSA (ng/mL)</label>
+                <input type="number" inputMode="decimal" placeholder="例: 0.8" value={bloodForm.psa} onChange={e => setBloodForm(f => ({...f, psa: e.target.value}))} />
+              </div>
+              <div className="blood-field">
+                <label>泌乳素 (ng/mL)</label>
+                <input type="number" inputMode="decimal" placeholder="例: 10" value={bloodForm.prolactin} onChange={e => setBloodForm(f => ({...f, prolactin: e.target.value}))} />
+              </div>
+            </div>
+            <textarea className="note-input" style={{marginTop:8,minHeight:40}} placeholder="備註（用藥狀態、是否空腹等）"
+              value={bloodForm.note} onChange={e => setBloodForm(f => ({...f, note: e.target.value}))} />
+            <button className="save-btn" style={{marginTop:8}} onClick={addBloodWork}>儲存血液報告</button>
+          </div>
+        )}
+
+        {bloodWork.length > 0 ? (
+          <div>
+            {bloodWork.slice().reverse().map((bw, i) => {
+              const pkLevel = calcPKLevels(data, 30).find(l => l.date === bw.date);
+              return (
+                <div key={i} style={{background:'var(--card2)',borderRadius:8,padding:10,marginBottom:8}}>
+                  <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                    <b style={{color:'var(--blue)',fontSize:'0.9em'}}>{bw.date}</b>
+                    <button style={{background:'none',border:'none',color:'var(--red)',fontSize:'0.8em',cursor:'pointer'}}
+                      onClick={() => saveBloodWork(bloodWork.filter(b => b.date !== bw.date))}>刪除</button>
+                  </div>
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:4,fontSize:'0.8em'}}>
+                    {bw.totalT && <div>Total T: <b style={{color: bw.totalT > 1000 ? 'var(--orange)' : bw.totalT < 300 ? 'var(--red)' : 'var(--green)'}}>{bw.totalT}</b></div>}
+                    {bw.freeT && <div>Free T: <b>{bw.freeT}</b></div>}
+                    {bw.e2 && <div>E2: <b style={{color: bw.e2 > 50 ? 'var(--red)' : bw.e2 < 15 ? 'var(--orange)' : 'var(--green)'}}>{bw.e2}</b></div>}
+                    {bw.shbg && <div>SHBG: <b>{bw.shbg}</b></div>}
+                    {bw.hct && <div>HCT: <b style={{color: bw.hct > 52 ? 'var(--red)' : 'var(--green)'}}>{bw.hct}%</b></div>}
+                    {bw.psa && <div>PSA: <b>{bw.psa}</b></div>}
+                    {bw.prolactin && <div>泌乳素: <b>{bw.prolactin}</b></div>}
+                  </div>
+                  {pkLevel && pkLevel.totalT > 0 && (
+                    <div style={{fontSize:'0.75em',color:'var(--purple)',marginTop:4}}>
+                      💉 抽血當日預估活性 T: {pkLevel.totalT}mg | E2 指數: {pkLevel.e2.toFixed(1)}
+                    </div>
+                  )}
+                  {bw.e2 && pkLevel?.e2 > 0 && (
+                    <div style={{fontSize:'0.75em',color:'var(--text2)',marginTop:2}}>
+                      📊 你的 E2 實際值 {bw.e2} vs AI 預估指數 {pkLevel.e2.toFixed(1)} — {bw.e2 > 40 ? '偏高，可能需要控制' : bw.e2 < 15 ? '偏低，關節可能乾' : '在舒適區'}
+                    </div>
+                  )}
+                  {bw.note && <div style={{fontSize:'0.75em',color:'var(--text2)',marginTop:2}}>📝 {bw.note}</div>}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p style={{color:'var(--text2)',fontSize:'0.85em'}}>尚無血液報告。定期抽血可以驗證 AI 預估的準確度。</p>
+        )}
+      </div>
+
+      {/* iOS Shortcut quick link */}
+      <div className="card">
+        <h3>⚡ 自動化捷徑</h3>
+        <p style={{fontSize:'0.82em',color:'var(--text2)',lineHeight:1.6}}>
+          用 iOS 捷徑自動匯入睡眠和體重，URL 格式：
+        </p>
+        <div style={{background:'var(--card2)',borderRadius:6,padding:8,margin:'6px 0',fontSize:'0.75em',wordBreak:'break-all',color:'var(--green)'}}>
+          {window.location.origin + window.location.pathname}?sleep=<b>BASE64_JSON</b>
+        </div>
+        <p style={{fontSize:'0.75em',color:'var(--text2)',lineHeight:1.5}}>
+          JSON 格式：{'{"bedtime":"23:30","wakeTime":"07:15","deep":"95","rem":"60","light":"120","source":"autosleep"}'}<br/>
+          體重：?weight=75.2<br/>
+          可合併：?sleep=...&weight=75.2<br/><br/>
+          捷徑步驟：讀取健康資料 → 轉 JSON → Base64 編碼 → 拷貝 → 打開 URL<br/>
+          打開後 App 會自動儲存，不需手動操作！
+        </p>
       </div>
     </div>
   );
