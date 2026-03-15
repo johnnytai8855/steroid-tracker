@@ -153,6 +153,25 @@ body{font-family:-apple-system,'Segoe UI',system-ui,sans-serif;background:var(--
 .dose-suggest{background:linear-gradient(135deg,#1a2235,#1e1a35);border:1px solid var(--purple);border-radius:var(--radius);padding:14px;margin-top:12px}
 .dose-suggest h4{color:var(--purple);font-size:0.9em;margin-bottom:8px}
 .tab-badge{position:absolute;top:2px;right:2px;width:6px;height:6px;border-radius:50%;background:var(--red)}
+/* Photo Timeline Grid */
+.timeline-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:6px;margin-top:10px}
+.timeline-cell{position:relative;aspect-ratio:3/4;border-radius:8px;overflow:hidden;cursor:pointer;border:2px solid transparent;transition:all 0.2s;background:var(--card2)}
+.timeline-cell img{width:100%;height:100%;object-fit:cover}
+.timeline-cell .tl-date{position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(0,0,0,0.8));color:#fff;font-size:0.65em;padding:3px 5px;text-align:center}
+.timeline-cell.selected{border-color:var(--purple);box-shadow:0 0 8px rgba(167,139,250,0.4)}
+.timeline-cell .tl-check{position:absolute;top:4px;right:4px;width:20px;height:20px;border-radius:50%;background:var(--purple);color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity 0.2s}
+.timeline-cell.selected .tl-check{opacity:1}
+/* Lightbox */
+.lightbox-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.92);z-index:1000;display:flex;flex-direction:column;padding:10px}
+.lightbox-header{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;color:#fff;flex-shrink:0}
+.lightbox-header button{background:none;border:none;color:#fff;font-size:1.4em;cursor:pointer;padding:6px}
+.lightbox-body{flex:1;display:flex;gap:8px;overflow-x:auto;align-items:center;justify-content:center;padding:8px}
+.lightbox-body .lb-item{flex-shrink:0;max-height:80vh;display:flex;flex-direction:column;align-items:center}
+.lightbox-body .lb-item img{max-height:70vh;max-width:90vw;object-fit:contain;border-radius:8px;border:2px solid var(--border)}
+.lightbox-body .lb-item .lb-info{color:#ccc;font-size:0.8em;margin-top:6px;text-align:center}
+/* Back button */
+.back-btn{display:inline-flex;align-items:center;gap:4px;background:none;border:none;color:var(--blue);font-size:0.9em;cursor:pointer;padding:8px 0;margin-bottom:8px}
+.back-btn:active{opacity:0.7}
 </style>
 </head>
 <body>
@@ -243,6 +262,56 @@ const TIME_PERIODS = [
   { key: 'midnight', label: '半夜' },
 ];
 
+// === Injection Timing Presets & Missed Injection Helper ===
+const INJECT_PRESETS = [
+  { key: 'wakeup', label: '起床', icon: '🌅', getTime: () => { const d = new Date(); return d.getHours() < 12 ? `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}` : '07:00'; } },
+  { key: 'bedtime', label: '睡前', icon: '🌙', getTime: () => '22:30' },
+  { key: 'now', label: '現在', icon: '⏰', getTime: () => { const d = new Date(); return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; } },
+];
+
+// Recommended injection schedules per drug (interval in days)
+const DRUG_SCHEDULES = {
+  sus: { intervalDays: 5, label: '每5天', bestTime: 'morning', note: '建議早上打，因為體內睪酮自然在早上最高' },
+  cyp: { intervalDays: 3.5, label: '每3.5天', bestTime: 'morning', note: '半衰期8天，每3.5天一次可保持穩定血濃度' },
+  mast: { intervalDays: 2, label: '每2天', bestTime: 'any', note: '半衰期短，需頻繁注射維持穩定' },
+  primo: { intervalDays: 3.5, label: '每3.5天', bestTime: 'any', note: '半衰期5天，每週兩次較理想' },
+  hcg: { intervalDays: 3, label: '每3天', bestTime: 'any', note: '半衰期短，少量多次效果較好' },
+};
+
+// Calculate missed injection info
+const getMissedInjectionInfo = (data, drugKey, selectedDate) => {
+  const schedule = DRUG_SCHEDULES[drugKey];
+  if (!schedule) return null;
+  const dates = Object.keys(data).sort();
+  const lastInj = dates.filter(d => d <= selectedDate && (data[d]?.drugs?.[drugKey] || 0) > 0).pop();
+  if (!lastInj) return null;
+  const todayDate = parseDate(selectedDate);
+  const lastInjDate = parseDate(lastInj);
+  const daysSince = Math.round((todayDate - lastInjDate) / (1000*60*60*24));
+  const daysOverdue = daysSince - schedule.intervalDays;
+  if (daysOverdue <= 0) return null; // not overdue
+  const lastTime = data[lastInj]?.drugTimes?.[drugKey] || null;
+  // Suggest makeup time
+  let suggestTime = '盡快補打';
+  let urgency = 'normal';
+  if (daysOverdue > schedule.intervalDays) {
+    urgency = 'high';
+    suggestTime = '已逾期較久，建議今天盡快補打（任何時間）';
+  } else if (daysOverdue > 1) {
+    urgency = 'medium';
+    suggestTime = '建議今天補打';
+    if (schedule.bestTime === 'morning') suggestTime += '（早上較佳）';
+  } else {
+    urgency = 'low';
+    if (lastTime) {
+      suggestTime = `比預定時間晚了，建議盡快補打`;
+    } else {
+      suggestTime = '今天記得打';
+    }
+  }
+  return { daysSince, daysOverdue: daysOverdue.toFixed(1), intervalDays: schedule.intervalDays, label: schedule.label, note: schedule.note, suggestTime, urgency, lastInj, lastTime };
+};
+
 // Normalize symptoms: old format (array) → new format (object with time periods)
 const normalizeSymptoms = (symptoms) => {
   if (!symptoms) return { allday: [], morning: [], afternoon: [], evening: [], midnight: [] };
@@ -267,19 +336,141 @@ const loadData = () => {
 };
 const saveData = data => localStorage.setItem('steroid_tracker', JSON.stringify(data));
 
-// Photo storage: separate keys to avoid hitting single-key size limits
-const loadPhoto = (date, type) => {
-  try { return localStorage.getItem(`photo_${date}_${type}`) || null; } catch { return null; }
+// === IndexedDB Photo Storage (persistent, large capacity) ===
+const DB_NAME = 'steroid_photos';
+const DB_VERSION = 1;
+const DB_STORE = 'photos';
+let _db = null;
+
+const openPhotoDB = () => {
+  if (_db) return Promise.resolve(_db);
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(DB_STORE)) {
+        db.createObjectStore(DB_STORE);
+      }
+    };
+    req.onsuccess = (e) => { _db = e.target.result; resolve(_db); };
+    req.onerror = (e) => { console.error('IndexedDB error', e); reject(e); };
+  });
 };
-const savePhoto = (date, type, dataUrl) => {
-  if (dataUrl) localStorage.setItem(`photo_${date}_${type}`, dataUrl);
-  else localStorage.removeItem(`photo_${date}_${type}`);
+
+// Migrate photos from localStorage to IndexedDB (one-time)
+const migratePhotosToIDB = async () => {
+  try {
+    const db = await openPhotoDB();
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key.startsWith('photo_')) keys.push(key);
+    }
+    if (!keys.length) return 0;
+    const tx = db.transaction(DB_STORE, 'readwrite');
+    const store = tx.objectStore(DB_STORE);
+    let migrated = 0;
+    for (const key of keys) {
+      const val = localStorage.getItem(key);
+      if (val) {
+        store.put(val, key);
+        migrated++;
+      }
+    }
+    await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = rej; });
+    // Remove from localStorage after successful migration
+    keys.forEach(k => localStorage.removeItem(k));
+    console.log(`Migrated ${migrated} photos to IndexedDB`);
+    return migrated;
+  } catch (e) { console.error('Photo migration error:', e); return 0; }
 };
+
+// Photo CRUD via IndexedDB
+const loadPhoto = async (date, type) => {
+  try {
+    const db = await openPhotoDB();
+    return new Promise((resolve) => {
+      const tx = db.transaction(DB_STORE, 'readonly');
+      const req = tx.objectStore(DB_STORE).get(`photo_${date}_${type}`);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => resolve(null);
+    });
+  } catch { return null; }
+};
+const savePhoto = async (date, type, dataUrl) => {
+  try {
+    const db = await openPhotoDB();
+    const tx = db.transaction(DB_STORE, 'readwrite');
+    const store = tx.objectStore(DB_STORE);
+    if (dataUrl) store.put(dataUrl, `photo_${date}_${type}`);
+    else store.delete(`photo_${date}_${type}`);
+    await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = rej; });
+  } catch (e) { console.error('Save photo error:', e); }
+};
+
+// Get all photo keys from IndexedDB
+const getAllPhotoKeys = async () => {
+  try {
+    const db = await openPhotoDB();
+    return new Promise((resolve) => {
+      const tx = db.transaction(DB_STORE, 'readonly');
+      const req = tx.objectStore(DB_STORE).getAllKeys();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => resolve([]);
+    });
+  } catch { return []; }
+};
+
+// Get all photos as object (for export)
+const getAllPhotos = async () => {
+  try {
+    const db = await openPhotoDB();
+    return new Promise((resolve) => {
+      const tx = db.transaction(DB_STORE, 'readonly');
+      const store = tx.objectStore(DB_STORE);
+      const keys = store.getAllKeys();
+      const vals = store.getAll();
+      tx.oncomplete = () => {
+        const result = {};
+        keys.result.forEach((k, i) => { result[k] = vals.result[i]; });
+        resolve(result);
+      };
+      tx.onerror = () => resolve({});
+    });
+  } catch { return {}; }
+};
+
+// Import photos from object
+const importPhotos = async (photosObj) => {
+  try {
+    const db = await openPhotoDB();
+    const tx = db.transaction(DB_STORE, 'readwrite');
+    const store = tx.objectStore(DB_STORE);
+    let count = 0;
+    Object.entries(photosObj).forEach(([k, v]) => {
+      if (k.startsWith('photo_')) { store.put(v, k); count++; }
+    });
+    await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = rej; });
+    return count;
+  } catch { return 0; }
+};
+
+// Delete all photos
+const clearAllPhotos = async () => {
+  try {
+    const db = await openPhotoDB();
+    const tx = db.transaction(DB_STORE, 'readwrite');
+    tx.objectStore(DB_STORE).clear();
+    await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = rej; });
+  } catch {}
+};
+
+// Storage usage estimate
 const getStorageUsage = () => {
   let total = 0;
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
-    total += localStorage.getItem(key).length * 2; // UTF-16
+    total += localStorage.getItem(key).length * 2;
   }
   return total;
 };
@@ -713,13 +904,18 @@ const generateBriefing = (data, selectedDate) => {
     }
   }
 
-  // 2. Days since last injection for each drug
+  // 2. Days since last injection + missed injection warnings
   DRUGS.forEach(drug => {
     const lastInj = dates.filter(d => d <= selectedDate && (data[d]?.drugs?.[drug.key] || 0) > 0).pop();
     if (lastInj) {
       const daysSince = Math.round((todayDate - parseDate(lastInj)) / (1000*60*60*24));
       if (daysSince <= 14 && daysSince > 0) {
-        items.push({ icon: '📅', text: `距離上次 ${drug.label}: ${daysSince} 天`, color: 'var(--text2)' });
+        const missed = getMissedInjectionInfo(data, drug.key, selectedDate);
+        if (missed && missed.urgency !== 'low') {
+          items.push({ icon: '⏰', text: `${drug.label} 已逾期 ${missed.daysOverdue} 天 — ${missed.suggestTime}`, color: missed.urgency === 'high' ? 'var(--red)' : 'var(--orange)' });
+        } else {
+          items.push({ icon: '📅', text: `距離上次 ${drug.label}: ${daysSince} 天`, color: 'var(--text2)' });
+        }
       }
     }
   });
@@ -1039,8 +1235,9 @@ function App() {
     saveData(newData);
   }, []);
 
-  // Auto-import sleep/weight from URL on first load
+  // Init: migrate photos from localStorage to IndexedDB + auto-import from URL
   useEffect(() => {
+    migratePhotosToIDB().then(n => { if (n > 0) setAutoImportMsg(`✓ 已將 ${n} 張照片遷移到更安全的儲存空間`); });
     const currentData = loadData();
     const sleepResult = autoImportSleepFromURL(currentData, d => { setData(d); saveData(d); });
     if (sleepResult) {
@@ -1074,7 +1271,9 @@ function App() {
       {tab === 'record' && <RecordPage data={data} updateData={updateData} selectedDate={selectedDate} setSelectedDate={setSelectedDate} saveStatus={saveStatus} setSaveStatus={setSaveStatus} />}
       {tab === 'calendar' && <CalendarPage data={data} calMonth={calMonth} setCalMonth={setCalMonth} selectedDate={selectedDate} setSelectedDate={setSelectedDate} setTab={setTab} />}
       {tab === 'smart' && <SmartPage data={data} updateData={updateData} selectedDate={selectedDate} />}
-      {tab === 'chart' && <ChartPage data={data} />}
+      {tab === 'chart' && <ChartPage data={data} setTab={setTab} />}
+      {tab === 'face_timeline' && <PhotoTimelinePage data={data} type="face" setTab={setTab} />}
+      {tab === 'body_timeline' && <PhotoTimelinePage data={data} type="body" setTab={setTab} />}
       {tab === 'more' && <MorePage data={data} updateData={updateData} />}
 
       <div className="tabs">
@@ -1120,16 +1319,17 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
     setSleep({ ...defaultSleep, ...(e.sleep || {}) });
     setSleepImportMsg('');
     setSaveStatus('');
-    // Load photos for this date
-    const fp = loadPhoto(selectedDate, 'face');
-    const bp = loadPhoto(selectedDate, 'body');
-    setFacePhoto(fp);
-    setBodyPhoto(bp);
-    setFaceAnalysis(null);
-    setBodyAnalysis(null);
-    // Auto-analyze if photos exist
-    if (fp) analyzePhoto(fp, 'face').then(setFaceAnalysis);
-    if (bp) analyzePhoto(bp, 'body').then(setBodyAnalysis);
+    // Load photos for this date (async IndexedDB)
+    setFacePhoto(null); setBodyPhoto(null);
+    setFaceAnalysis(null); setBodyAnalysis(null);
+    (async () => {
+      const fp = await loadPhoto(selectedDate, 'face');
+      const bp = await loadPhoto(selectedDate, 'body');
+      setFacePhoto(fp);
+      setBodyPhoto(bp);
+      if (fp) analyzePhoto(fp, 'face').then(setFaceAnalysis);
+      if (bp) analyzePhoto(bp, 'body').then(setBodyAnalysis);
+    })();
   }, [selectedDate, data]);
 
   const changeDate = delta => {
@@ -1154,7 +1354,7 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
       const compressed = await compressImage(file, 480, 0.6);
       if (type === 'face') {
         setFacePhoto(compressed);
-        savePhoto(selectedDate, 'face', compressed);
+        await savePhoto(selectedDate, 'face', compressed);
         const analysis = await analyzePhoto(compressed, 'face');
         setFaceAnalysis(analysis);
         // Save analysis in data
@@ -1165,7 +1365,7 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
         updateData(newData);
       } else {
         setBodyPhoto(compressed);
-        savePhoto(selectedDate, 'body', compressed);
+        await savePhoto(selectedDate, 'body', compressed);
         const analysis = await analyzePhoto(compressed, 'body');
         setBodyAnalysis(analysis);
         const newData = { ...data };
@@ -1178,15 +1378,15 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
     setAnalyzing(false);
   };
 
-  const removePhoto = (type) => {
-    if (type === 'face') { setFacePhoto(null); setFaceAnalysis(null); savePhoto(selectedDate, 'face', null); }
-    else { setBodyPhoto(null); setBodyAnalysis(null); savePhoto(selectedDate, 'body', null); }
+  const removePhoto = async (type) => {
+    if (type === 'face') { setFacePhoto(null); setFaceAnalysis(null); await savePhoto(selectedDate, 'face', null); }
+    else { setBodyPhoto(null); setBodyAnalysis(null); await savePhoto(selectedDate, 'body', null); }
     const newData = { ...data };
     if (newData[selectedDate]) {
       if (type === 'face') delete newData[selectedDate].faceAnalysis;
       else delete newData[selectedDate].bodyAnalysis;
-      const hasFace = type === 'face' ? false : !!loadPhoto(selectedDate, 'face');
-      const hasBody = type === 'body' ? false : !!loadPhoto(selectedDate, 'body');
+      const hasFace = type === 'face' ? false : !!(await loadPhoto(selectedDate, 'face'));
+      const hasBody = type === 'body' ? false : !!(await loadPhoto(selectedDate, 'body'));
       newData[selectedDate].hasPhotos = hasFace || hasBody;
       updateData(newData);
     }
@@ -1194,8 +1394,8 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
 
   // Re-analyze photos after calibration
   const handleRecalibrate = async () => {
-    const fp = loadPhoto(selectedDate, 'face');
-    const bp = loadPhoto(selectedDate, 'body');
+    const fp = await loadPhoto(selectedDate, 'face');
+    const bp = await loadPhoto(selectedDate, 'body');
     if (fp) { const a = await analyzePhoto(fp, 'face'); setFaceAnalysis(a); }
     if (bp) { const a = await analyzePhoto(bp, 'body'); setBodyAnalysis(a); }
   };
@@ -1420,21 +1620,52 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
 
       <div className="card">
         <h3>💊 藥物劑量</h3>
-        {DRUGS.map(d => (
-          <div className="drug-row" key={d.key} style={{flexWrap:'wrap'}}>
-            <div className="drug-label" style={{color: d.color}}>{d.label}</div>
-            <input className="drug-input" type="number" step="any" placeholder="0"
-              value={drugs[d.key] || ''} onChange={e => setDrug(d.key, e.target.value)}
-              inputMode="decimal" style={{flex:'1 1 60px',minWidth:60}} />
-            <div className="drug-unit">{d.unit}</div>
-            <input type="time" value={drugTimes[d.key] || ''}
-              onChange={e => setDrugTime(d.key, e.target.value)}
-              style={{background:'var(--card2)',border:'1px solid var(--border)',borderRadius:8,padding:'6px 8px',color:'var(--text)',fontSize:'0.82em',outline:'none',width:90,flexShrink:0}}
-              placeholder="時間" />
-            <button onClick={() => { const now = new Date(); setDrugTime(d.key, `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`); }}
-              style={{background:'var(--card2)',border:'1px solid var(--border)',borderRadius:8,padding:'6px 8px',color:'var(--blue)',fontSize:'0.75em',cursor:'pointer',flexShrink:0,whiteSpace:'nowrap'}}>現在</button>
-          </div>
-        ))}
+        {DRUGS.map(d => {
+          const missed = getMissedInjectionInfo(data, d.key, selectedDate);
+          return (
+            <div key={d.key} style={{marginBottom:12}}>
+              {missed && (
+                <div style={{background: missed.urgency === 'high' ? 'rgba(239,68,68,0.15)' : missed.urgency === 'medium' ? 'rgba(251,146,60,0.15)' : 'rgba(96,165,250,0.15)',
+                  border: `1px solid ${missed.urgency === 'high' ? 'var(--red)' : missed.urgency === 'medium' ? 'var(--orange)' : 'var(--blue)'}`,
+                  borderRadius:8,padding:'8px 10px',marginBottom:6,fontSize:'0.78em'}}>
+                  <div style={{fontWeight:600,color: missed.urgency === 'high' ? 'var(--red)' : missed.urgency === 'medium' ? 'var(--orange)' : 'var(--blue)'}}>
+                    ⏰ {d.label}：距上次 {missed.daysSince} 天（建議{missed.label}）
+                  </div>
+                  <div style={{color:'var(--text2)',marginTop:3}}>{missed.suggestTime}</div>
+                </div>
+              )}
+              <div className="drug-row" style={{flexWrap:'wrap'}}>
+                <div className="drug-label" style={{color: d.color}}>{d.label}</div>
+                <input className="drug-input" type="number" step="any" placeholder="0"
+                  value={drugs[d.key] || ''} onChange={e => setDrug(d.key, e.target.value)}
+                  inputMode="decimal" style={{flex:'1 1 60px',minWidth:60}} />
+                <div className="drug-unit">{d.unit}</div>
+                <input type="time" value={drugTimes[d.key] || ''}
+                  onChange={e => setDrugTime(d.key, e.target.value)}
+                  style={{background:'var(--card2)',border:'1px solid var(--border)',borderRadius:8,padding:'6px 8px',color:'var(--text)',fontSize:'0.82em',outline:'none',width:90,flexShrink:0}}
+                  placeholder="時間" />
+              </div>
+              {/* Quick time presets */}
+              {(drugs[d.key] && parseFloat(drugs[d.key]) > 0) && (
+                <div style={{display:'flex',gap:4,marginTop:4,marginLeft:100,flexWrap:'wrap'}}>
+                  {INJECT_PRESETS.map(p => (
+                    <button key={p.key} onClick={() => setDrugTime(d.key, p.getTime())}
+                      style={{background: drugTimes[d.key] === p.getTime() ? 'var(--blue)' : 'var(--card2)',
+                        border:'1px solid var(--border)',borderRadius:14,padding:'4px 10px',
+                        color: drugTimes[d.key] === p.getTime() ? '#fff' : 'var(--text2)',fontSize:'0.72em',cursor:'pointer',whiteSpace:'nowrap'}}>
+                      {p.icon} {p.label}
+                    </button>
+                  ))}
+                  {DRUG_SCHEDULES[d.key] && (
+                    <span style={{fontSize:'0.68em',color:'var(--text2)',alignSelf:'center',marginLeft:4}}>
+                      💡 {DRUG_SCHEDULES[d.key].note}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       <div className="card">
@@ -1752,7 +1983,7 @@ function CalendarPage({ data, calMonth, setCalMonth, selectedDate, setSelectedDa
   );
 }
 
-function ChartPage({ data }) {
+function ChartPage({ data, setTab }) {
   const chartRef1 = useRef(null);
   const chartRef2 = useRef(null);
   const chartRef3 = useRef(null);
@@ -2053,6 +2284,20 @@ function ChartPage({ data }) {
 
       {/* Photo Comparison Timeline */}
       <PhotoTimeline data={data} sortedDates={sortedDates} />
+
+      {/* Quick links to dedicated timeline pages */}
+      <div className="card">
+        <h3>📷 照片時間軸</h3>
+        <div style={{display:'flex',gap:8}}>
+          <button className="action-btn" style={{flex:1,margin:0,background:'var(--purple)',color:'#fff',fontWeight:600}} onClick={() => setTab('face_timeline')}>
+            🤳 臉部變化
+          </button>
+          <button className="action-btn" style={{flex:1,margin:0,background:'var(--green)',color:'#fff',fontWeight:600}} onClick={() => setTab('body_timeline')}>
+            💪 身材變化
+          </button>
+        </div>
+        <p style={{fontSize:'0.75em',color:'var(--text2)',marginTop:6,textAlign:'center'}}>點選多張照片進行放大對比</p>
+      </div>
 
       <div className="card">
         <h3>📈 統計摘要 / 荷爾蒙狀態推測</h3>
@@ -2428,31 +2673,39 @@ function PhotoTimeline({ data, sortedDates }) {
   const [photos, setPhotos] = useState([]);
 
   useEffect(() => {
-    const loaded = [];
-    photoDates.slice(-20).forEach(date => {
-      const photo = loadPhoto(date, compareType);
-      if (photo) {
-        loaded.push({ date, photo, analysis: compareType === 'face' ? data[date]?.faceAnalysis : data[date]?.bodyAnalysis });
+    let cancelled = false;
+    (async () => {
+      const loaded = [];
+      for (const date of photoDates.slice(-20)) {
+        const photo = await loadPhoto(date, compareType);
+        if (photo) {
+          loaded.push({ date, photo, analysis: compareType === 'face' ? data[date]?.faceAnalysis : data[date]?.bodyAnalysis });
+        }
       }
-    });
-    setPhotos(loaded);
-    // Set default compare dates
-    if (loaded.length >= 2 && !compareDate1) {
-      setCompareDate1(loaded[0].date);
-      setCompareDate2(loaded[loaded.length - 1].date);
-    }
+      if (cancelled) return;
+      setPhotos(loaded);
+      if (loaded.length >= 2 && !compareDate1) {
+        setCompareDate1(loaded[0].date);
+        setCompareDate2(loaded[loaded.length - 1].date);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [photoDates, compareType, data]);
 
   // Load compare photos when dates change
   useEffect(() => {
-    if (compareDate1) {
-      const p = loadPhoto(compareDate1, compareType);
-      setComparePhoto1(p ? { photo: p, analysis: compareType === 'face' ? data[compareDate1]?.faceAnalysis : data[compareDate1]?.bodyAnalysis } : null);
-    }
-    if (compareDate2) {
-      const p = loadPhoto(compareDate2, compareType);
-      setComparePhoto2(p ? { photo: p, analysis: compareType === 'face' ? data[compareDate2]?.faceAnalysis : data[compareDate2]?.bodyAnalysis } : null);
-    }
+    let cancelled = false;
+    (async () => {
+      if (compareDate1) {
+        const p = await loadPhoto(compareDate1, compareType);
+        if (!cancelled) setComparePhoto1(p ? { photo: p, analysis: compareType === 'face' ? data[compareDate1]?.faceAnalysis : data[compareDate1]?.bodyAnalysis } : null);
+      }
+      if (compareDate2) {
+        const p = await loadPhoto(compareDate2, compareType);
+        if (!cancelled) setComparePhoto2(p ? { photo: p, analysis: compareType === 'face' ? data[compareDate2]?.faceAnalysis : data[compareDate2]?.bodyAnalysis } : null);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [compareDate1, compareDate2, compareType, data]);
 
   // Swelling trend chart
@@ -2606,6 +2859,116 @@ function PhotoTimeline({ data, sortedDates }) {
   );
 }
 
+// === Dedicated Photo Timeline Page (Face or Body) with Multi-Select & Lightbox ===
+function PhotoTimelinePage({ data, type, setTab }) {
+  const [photos, setPhotos] = useState([]);
+  const [selected, setSelected] = useState([]);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const typeLabel = type === 'face' ? '臉部' : '身材';
+
+  const sortedDates = useMemo(() => Object.keys(data).sort(), [data]);
+  const photoDates = useMemo(() => sortedDates.filter(d => data[d]?.hasPhotos), [data, sortedDates]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      const loaded = [];
+      for (const date of photoDates) {
+        const photo = await loadPhoto(date, type);
+        if (photo && !cancelled) {
+          const analysis = type === 'face' ? data[date]?.faceAnalysis : data[date]?.bodyAnalysis;
+          loaded.push({ date, photo, analysis });
+        }
+      }
+      if (!cancelled) {
+        setPhotos(loaded);
+        setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [photoDates, type]);
+
+  const toggleSelect = (date) => {
+    setSelected(prev => prev.includes(date) ? prev.filter(d => d !== date) : [...prev, date]);
+  };
+
+  const openLightbox = () => {
+    if (selected.length === 0) {
+      // If nothing selected, show all
+      setSelected(photos.map(p => p.date));
+    }
+    setLightboxOpen(true);
+  };
+
+  const lightboxPhotos = photos.filter(p => selected.includes(p.date));
+
+  return (
+    <div className="page">
+      <button className="back-btn" onClick={() => setTab('chart')}>← 返回分析</button>
+      <div className="card">
+        <h3>{type === 'face' ? '🤳' : '💪'} {typeLabel}變化時間軸</h3>
+        <p style={{fontSize:'0.82em',color:'var(--text2)',marginBottom:10}}>
+          共 {photos.length} 張照片 — 點選照片可多選，再點「對比」放大比較
+        </p>
+        {selected.length > 0 && (
+          <div style={{display:'flex',gap:8,marginBottom:10}}>
+            <button className="save-btn" style={{flex:1,padding:'10px',fontSize:'0.85em'}} onClick={openLightbox}>
+              🔍 對比已選 {selected.length} 張
+            </button>
+            <button className="action-btn" style={{flex:'0 0 70px',margin:0,fontSize:'0.82em'}} onClick={() => setSelected([])}>
+              清除
+            </button>
+          </div>
+        )}
+        {loading ? (
+          <div style={{textAlign:'center',padding:30,color:'var(--text2)'}}>載入照片中...</div>
+        ) : photos.length === 0 ? (
+          <div style={{textAlign:'center',padding:30,color:'var(--text2)'}}>
+            尚無{typeLabel}照片。在紀錄頁拍攝{typeLabel}照即可在此追蹤變化。
+          </div>
+        ) : (
+          <div className="timeline-grid">
+            {photos.map(p => (
+              <div key={p.date} className={`timeline-cell ${selected.includes(p.date) ? 'selected' : ''}`}
+                onClick={() => toggleSelect(p.date)}>
+                <img src={p.photo} alt={p.date} loading="lazy" />
+                <div className="tl-date">
+                  {p.date.slice(5)}
+                  {p.analysis && <span style={{display:'block',fontSize:'0.9em'}}>💪{p.analysis.pumpScore||0} 📐{p.analysis.definitionScore||0} 💧{p.analysis.waterScore||0}</span>}
+                </div>
+                <div className="tl-check">✓</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Lightbox overlay */}
+      {lightboxOpen && (
+        <div className="lightbox-overlay" onClick={(e) => { if (e.target === e.currentTarget) setLightboxOpen(false); }}>
+          <div className="lightbox-header">
+            <span style={{fontSize:'0.9em'}}>{typeLabel}對比 — {lightboxPhotos.length} 張</span>
+            <button onClick={() => setLightboxOpen(false)}>✕</button>
+          </div>
+          <div className="lightbox-body">
+            {lightboxPhotos.map(p => (
+              <div className="lb-item" key={p.date}>
+                <img src={p.photo} alt={p.date} />
+                <div className="lb-info">
+                  {p.date}
+                  {p.analysis && <><br/>💪 {p.analysis.pumpLabel||''} | 📐 線條:{p.analysis.definitionScore||0} | 💧 水:{p.analysis.waterScore||0}</>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MorePage({ data, updateData }) {
   const [importStatus, setImportStatus] = useState('');
   const fileRef = useRef(null);
@@ -2698,64 +3061,57 @@ function MorePage({ data, updateData }) {
       </div>
 
       <div className="card">
-        <h3>📸 照片管理</h3>
-        <button className="action-btn" onClick={() => {
-          const photoKeys = [];
-          for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key.startsWith('photo_')) photoKeys.push(key);
-          }
-          if (!photoKeys.length) { alert('沒有儲存的照片'); return; }
-          const photos = {};
-          photoKeys.forEach(k => photos[k] = localStorage.getItem(k));
-          const blob = new Blob([JSON.stringify(photos)], { type: 'application/json' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url; a.download = `steroid_photos_${today()}.json`;
-          a.click(); URL.revokeObjectURL(url);
+        <h3>📸 照片管理（IndexedDB）</h3>
+        <button className="action-btn" onClick={async () => {
+          try {
+            const photos = await getAllPhotos();
+            const keys = Object.keys(photos);
+            if (!keys.length) { alert('沒有儲存的照片'); return; }
+            const blob = new Blob([JSON.stringify(photos)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = `steroid_photos_${today()}.json`;
+            a.click(); URL.revokeObjectURL(url);
+            alert(`✓ 已匯出 ${keys.length} 張照片`);
+          } catch(err) { alert('匯出失敗: ' + err.message); }
         }}>匯出所有照片（JSON）</button>
         <button className="action-btn" onClick={() => {
           const input = document.createElement('input');
           input.type = 'file'; input.accept = '.json';
-          input.onchange = e => {
+          input.onchange = async (e) => {
             const file = e.target.files[0];
             if (!file) return;
             const reader = new FileReader();
-            reader.onload = ev => {
+            reader.onload = async (ev) => {
               try {
                 const photos = JSON.parse(ev.target.result);
-                let count = 0;
-                Object.entries(photos).forEach(([k, v]) => {
-                  if (k.startsWith('photo_')) { localStorage.setItem(k, v); count++; }
-                });
+                const count = await importPhotos(photos);
                 alert(`✓ 匯入 ${count} 張照片成功！`);
-              } catch { alert('✗ 檔案格式錯誤'); }
+              } catch(err) { alert('✗ 檔案格式錯誤: ' + err.message); }
             };
             reader.readAsText(file);
           };
           input.click();
         }}>匯入照片（JSON）</button>
-        <button className="action-btn" style={{color:'var(--orange)',borderColor:'var(--orange)'}} onClick={() => {
-          const photoKeys = [];
-          for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key.startsWith('photo_')) photoKeys.push(key);
-          }
-          if (!photoKeys.length) { alert('沒有儲存的照片'); return; }
-          if (window.confirm(`確定要刪除全部 ${photoKeys.length} 張照片嗎？`)) {
-            photoKeys.forEach(k => localStorage.removeItem(k));
-            alert('已清除所有照片');
-          }
+        <button className="action-btn" style={{color:'var(--orange)',borderColor:'var(--orange)'}} onClick={async () => {
+          try {
+            const keys = await getAllPhotoKeys();
+            if (!keys.length) { alert('沒有儲存的照片'); return; }
+            if (window.confirm(`確定要刪除全部 ${keys.length} 張照片嗎？`)) {
+              await clearAllPhotos();
+              alert('已清除所有照片');
+            }
+          } catch(err) { alert('清除失敗: ' + err.message); }
         }}>清除所有照片</button>
         <p style={{fontSize:'0.78em',color:'var(--text2)',marginTop:8}}>
-          儲存空間使用：{(getStorageUsage() / 1024 / 1024).toFixed(1)} MB / ~5 MB
+          照片儲存於 IndexedDB，不受瀏覽器快取清理影響。建議定期匯出備份。
         </p>
       </div>
 
       <AutoSleepImport data={data} updateData={updateData} />
 
       <div className="card" style={{fontSize:'0.78em',color:'var(--text2)'}}>
-        用藥追蹤 App v5.0<br/>
+        用藥追蹤 App v6.0<br/>
         本工具僅供個人紀錄用途，不構成醫療建議。
       </div>
     </div>
