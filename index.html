@@ -377,6 +377,78 @@ const getCalibStats = () => {
   return { count: cal.entries.length, offsets: cal.offsets };
 };
 
+// === AutoSleep CSV Parser ===
+const parseAutoSleepCSV = (csvText) => {
+  const lines = csvText.trim().split('\n');
+  if (lines.length < 2) return [];
+  const entries = [];
+  const hmsToMin = (s) => {
+    if (!s || !s.includes(':')) return 0;
+    const parts = s.trim().split(':').map(Number);
+    return (parts[0]||0)*60 + (parts[1]||0) + (parts[2]||0)/60;
+  };
+  const parseCSVLine = (line) => {
+    const result = []; let cur = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') inQ = !inQ;
+      else if (c === ',' && !inQ) { result.push(cur.trim()); cur = ''; }
+      else cur += c;
+    }
+    result.push(cur.trim());
+    return result;
+  };
+  for (let i = 1; i < lines.length; i++) {
+    try {
+      const cols = parseCSVLine(lines[i]);
+      if (cols.length < 16) continue;
+      const wakeStr = cols[4];
+      if (!wakeStr || !wakeStr.includes('-')) continue;
+      const datePart = wakeStr.split(' ')[0];
+      const bedTime = cols[3] ? cols[3].split(' ')[1]?.slice(0,5) : '';
+      const wakeTime = wakeStr.split(' ')[1]?.slice(0,5) || '';
+      const totalSleepMin = hmsToMin(cols[9]);
+      const efficiency = parseFloat(cols[11]) || 0;
+      const deepMin = Math.round(hmsToMin(cols[15]));
+      const sleepHR = parseFloat(cols[17]) || 0;
+      const hrv = parseFloat(cols[23]) || 0;
+      const sleepHRV = parseFloat(cols[25]) || 0;
+      const spo2 = parseFloat(cols[27]) || 0;
+      const nonDeep = Math.max(0, totalSleepMin - deepMin);
+      const remMin = Math.round(nonDeep * 0.35);
+      const lightMin = Math.round(nonDeep * 0.65);
+      const bedDuration = hmsToMin(cols[5]);
+      const awakeMin = Math.round(Math.max(0, bedDuration - totalSleepMin));
+      const quality = efficiency >= 90 ? 5 : efficiency >= 80 ? 4 : efficiency >= 70 ? 3 : efficiency >= 60 ? 2 : 1;
+      entries.push({
+        date: datePart,
+        sleep: {
+          bedtime: bedTime, wakeTime, quality,
+          deep: String(deepMin), rem: String(remMin), light: String(lightMin), awake: String(awakeMin),
+          source: 'autosleep',
+          efficiency: Math.round(efficiency*10)/10,
+          sleepHR: Math.round(sleepHR*10)/10,
+          hrv: Math.round(hrv), sleepHRV: Math.round(sleepHRV),
+          spo2: Math.round(spo2*10)/10,
+          totalMin: Math.round(totalSleepMin),
+        }
+      });
+    } catch (e) { console.error('CSV parse error line', i, e); }
+  }
+  return entries;
+};
+const bulkImportSleep = (data, sleepEntries) => {
+  const newData = { ...data };
+  let count = 0;
+  sleepEntries.forEach(({ date, sleep }) => {
+    if (!newData[date]) newData[date] = { drugs: {}, symptoms: {}, note: '' };
+    newData[date].sleep = sleep;
+    newData[date].updatedAt = new Date().toISOString();
+    count++;
+  });
+  return { newData, count };
+};
+
 // === Auto Sleep Import via URL ===
 // iOS Shortcut opens: tracker_url?sleep=BASE64_JSON
 // App detects on load, saves, clears URL
@@ -661,7 +733,14 @@ const generateBriefing = (data, selectedDate) => {
     let mins = (wh*60+wm)-(bh*60+bm); if(mins<=0) mins+=1440;
     const hrs = (mins/60).toFixed(1);
     const quality = sleepEntry.quality ? ['','😫','😕','😐','🙂','😴'][sleepEntry.quality] : '';
-    items.push({ icon: '😴', text: `昨晚睡 ${hrs} 小時 ${quality}${parseFloat(hrs) < 6 ? ' ⚠️ 睡眠不足，今天可能疲累/水腫' : ''}`, color: parseFloat(hrs) < 6 ? 'var(--orange)' : 'var(--green)' });
+    let sleepExtra = '';
+    if (sleepEntry.hrv) sleepExtra += ` | HRV ${sleepEntry.hrv}`;
+    if (sleepEntry.sleepHR) sleepExtra += ` | HR ${sleepEntry.sleepHR}`;
+    if (sleepEntry.spo2) sleepExtra += ` | SpO2 ${sleepEntry.spo2}%`;
+    items.push({ icon: '😴', text: `昨晚睡 ${hrs} 小時 ${quality}${sleepExtra}${parseFloat(hrs) < 6 ? ' ⚠️ 睡眠不足' : ''}`, color: parseFloat(hrs) < 6 ? 'var(--orange)' : 'var(--green)' });
+    if (sleepEntry.hrv && sleepEntry.hrv < 30) {
+      items.push({ icon: '💓', text: `HRV 偏低 (${sleepEntry.hrv}) — 身體可能處於壓力/恢復不足狀態`, color: 'var(--orange)' });
+    }
   }
 
   // 4. Weight trend
@@ -1485,6 +1564,31 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
             <span>🟦 深睡</span><span>🟪 REM</span><span>💠 淺睡</span><span>⬛ 清醒</span>
           </div>
         )}
+        {/* Extra AutoSleep health metrics */}
+        {(sleep.sleepHR || sleep.hrv || sleep.spo2) && (
+          <div style={{display:'flex',gap:12,justifyContent:'center',flexWrap:'wrap',padding:'8px 0',fontSize:'0.82em'}}>
+            {sleep.sleepHR > 0 && <div style={{textAlign:'center'}}>
+              <div style={{fontSize:'1.2em',fontWeight:700,color:'var(--red)'}}>{sleep.sleepHR}</div>
+              <div style={{fontSize:'0.7em',color:'var(--text2)'}}>睡眠心率</div>
+            </div>}
+            {sleep.hrv > 0 && <div style={{textAlign:'center'}}>
+              <div style={{fontSize:'1.2em',fontWeight:700,color:'var(--green)'}}>{sleep.hrv}</div>
+              <div style={{fontSize:'0.7em',color:'var(--text2)'}}>HRV</div>
+            </div>}
+            {sleep.sleepHRV > 0 && <div style={{textAlign:'center'}}>
+              <div style={{fontSize:'1.2em',fontWeight:700,color:'var(--blue)'}}>{sleep.sleepHRV}</div>
+              <div style={{fontSize:'0.7em',color:'var(--text2)'}}>睡眠HRV</div>
+            </div>}
+            {sleep.spo2 > 0 && <div style={{textAlign:'center'}}>
+              <div style={{fontSize:'1.2em',fontWeight:700,color: sleep.spo2 < 95 ? 'var(--orange)' : 'var(--blue)'}}>{sleep.spo2}%</div>
+              <div style={{fontSize:'0.7em',color:'var(--text2)'}}>血氧</div>
+            </div>}
+            {sleep.efficiency > 0 && <div style={{textAlign:'center'}}>
+              <div style={{fontSize:'1.2em',fontWeight:700,color: sleep.efficiency >= 85 ? 'var(--green)' : 'var(--orange)'}}>{sleep.efficiency}%</div>
+              <div style={{fontSize:'0.7em',color:'var(--text2)'}}>效率</div>
+            </div>}
+          </div>
+        )}
         <button className="sleep-import-btn" onClick={async () => {
           try {
             const text = await navigator.clipboard.readText();
@@ -1773,8 +1877,8 @@ function ChartPage({ data }) {
             tension: 0.3,
             yAxisID: 'y1'
           }, {
-            label: '品質',
-            data: sleepDates.map(d => data[d].sleep.quality || 0),
+            label: 'HRV',
+            data: sleepDates.map(d => data[d].sleep.hrv || data[d].sleep.sleepHRV || 0),
             type: 'line',
             borderColor: '#34d399',
             backgroundColor: '#34d39922',
@@ -2648,41 +2752,119 @@ function MorePage({ data, updateData }) {
         </p>
       </div>
 
-      <div className="card">
-        <h3>😴 睡眠匯入設定</h3>
-        <p style={{fontSize:'0.82em',color:'var(--text2)',lineHeight:1.6,marginBottom:10}}>
-          透過 iOS 捷徑自動讀取 Apple Health 或 AutoSleep 的睡眠資料：
-        </p>
-        <div style={{background:'var(--card2)',borderRadius:8,padding:12,fontSize:'0.78em',color:'var(--text)',lineHeight:1.7,marginBottom:10}}>
-          <b style={{color:'var(--blue)'}}>設定步驟：</b><br/>
-          1. 開啟 iPhone「捷徑」App<br/>
-          2. 新增捷徑，加入以下動作：<br/>
-          <div style={{background:'var(--bg)',borderRadius:6,padding:8,margin:'6px 0',fontSize:'0.9em'}}>
-            ① 「尋找健康樣本」<br/>
-            　類型：睡眠分析<br/>
-            　排序：開始日期（最新的）<br/>
-            　限制：1 筆<br/>
-            ② 「文字」動作，輸入：<br/>
-            <code style={{color:'var(--green)',display:'block',padding:'4px 0',wordBreak:'break-all'}}>
-            {'{"bedtime":"HH:mm","wakeTime":"HH:mm","deep":"深睡分鐘","rem":"REM分鐘","light":"淺睡分鐘","source":"autosleep"}'}
-            </code>
-            　（用「健康樣本」的欄位取代上面的值）<br/>
-            ③ 「拷貝到剪貼簿」<br/>
-            ④ 「打開URL」→ 填入追蹤器網址
-          </div>
-          <b style={{color:'var(--blue)'}}>簡易版（只匯入時間）：</b><br/>
-          複製「23:30,07:15」格式到剪貼簿<br/>
-          回到追蹤器按「從剪貼簿匯入」即可
-        </div>
-        <p style={{fontSize:'0.75em',color:'var(--text2)'}}>
-          如果你用 AutoSleep，它的資料會自動寫入 Apple Health，<br/>
-          所以上面的捷徑就能讀到 AutoSleep 的詳細資料。
-        </p>
-      </div>
+      <AutoSleepImport data={data} updateData={updateData} />
 
       <div className="card" style={{fontSize:'0.78em',color:'var(--text2)'}}>
-        用藥追蹤 App v4.0<br/>
+        用藥追蹤 App v5.0<br/>
         本工具僅供個人紀錄用途，不構成醫療建議。
+      </div>
+    </div>
+  );
+}
+
+// === AutoSleep CSV Import Component ===
+function AutoSleepImport({ data, updateData }) {
+  const [csvPreview, setCsvPreview] = useState(null);
+  const [importResult, setImportResult] = useState('');
+  const csvFileRef = useRef(null);
+
+  const handleCSVFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const entries = parseAutoSleepCSV(ev.target.result);
+        if (!entries.length) {
+          setImportResult('⚠️ 無法解析 CSV，請確認是 AutoSleep 匯出的格式');
+          return;
+        }
+        setCsvPreview(entries);
+      } catch (err) {
+        setImportResult('⚠️ 檔案格式錯誤：' + err.message);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const doImport = () => {
+    if (!csvPreview) return;
+    const { newData, count } = bulkImportSleep(data, csvPreview);
+    updateData(newData);
+    setImportResult(`✓ 成功匯入 ${count} 天的 AutoSleep 資料！`);
+    setCsvPreview(null);
+    setTimeout(() => setImportResult(''), 4000);
+  };
+
+  const existingDates = csvPreview ? csvPreview.filter(e => data[e.date]?.sleep).length : 0;
+
+  return (
+    <div className="card">
+      <h3>😴 AutoSleep 匯入</h3>
+      <p style={{fontSize:'0.82em',color:'var(--text2)',lineHeight:1.6,marginBottom:10}}>
+        從 AutoSleep App 匯出 CSV，直接匯入所有睡眠紀錄
+      </p>
+
+      <div style={{background:'var(--card2)',borderRadius:8,padding:12,fontSize:'0.78em',color:'var(--text)',lineHeight:1.7,marginBottom:10}}>
+        <b style={{color:'var(--blue)'}}>匯出步驟：</b><br/>
+        1. 開啟 AutoSleep App → 按「歷史」<br/>
+        2. 右上角「⋯」→「匯出資料」<br/>
+        3. 選擇日期範圍 → 格式選 CSV<br/>
+        4. 傳到 iPhone 或 AirDrop 到電腦<br/>
+        5. 在這裡點下面的按鈕上傳
+      </div>
+
+      <button className="action-btn" style={{background:'var(--blue)',color:'#fff',fontWeight:600}}
+        onClick={() => csvFileRef.current?.click()}>
+        📁 選擇 AutoSleep CSV 檔案
+      </button>
+      <input ref={csvFileRef} type="file" accept=".csv,.CSV" style={{display:'none'}} onChange={handleCSVFile} />
+
+      {csvPreview && (
+        <div style={{marginTop:12}}>
+          <div style={{background:'var(--card2)',borderRadius:8,padding:12}}>
+            <div style={{fontSize:'0.9em',fontWeight:600,color:'var(--green)',marginBottom:8}}>
+              📊 預覽：找到 {csvPreview.length} 天睡眠資料
+            </div>
+            <div style={{fontSize:'0.78em',color:'var(--text2)',marginBottom:8}}>
+              日期範圍：{csvPreview[0].date} ~ {csvPreview[csvPreview.length-1].date}
+              {existingDates > 0 && <span style={{color:'var(--orange)'}}> （{existingDates} 天會覆蓋現有資料）</span>}
+            </div>
+            <div style={{maxHeight:200,overflowY:'auto',fontSize:'0.75em'}}>
+              {csvPreview.slice(0, 10).map((e, i) => {
+                const s = e.sleep;
+                return (
+                  <div key={i} style={{padding:'4px 0',borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between'}}>
+                    <span>{e.date}</span>
+                    <span>{s.bedtime}→{s.wakeTime}</span>
+                    <span>深睡{s.deep}m</span>
+                    <span>HR{s.sleepHR}</span>
+                    <span>HRV{s.hrv}</span>
+                    <span>SpO2 {s.spo2}%</span>
+                  </div>
+                );
+              })}
+              {csvPreview.length > 10 && <div style={{padding:4,color:'var(--text2)'}}>...還有 {csvPreview.length - 10} 天</div>}
+            </div>
+          </div>
+          <div style={{display:'flex',gap:8,marginTop:8}}>
+            <button className="save-btn" style={{flex:1}} onClick={doImport}>✓ 確認匯入 {csvPreview.length} 天</button>
+            <button className="action-btn" style={{flex:'0 0 80px',margin:0}} onClick={() => setCsvPreview(null)}>取消</button>
+          </div>
+        </div>
+      )}
+
+      {importResult && (
+        <div style={{marginTop:8,padding:8,borderRadius:8,textAlign:'center',fontSize:'0.85em',
+          background: importResult.includes('✓') ? 'rgba(52,211,153,0.15)' : 'rgba(251,146,60,0.15)',
+          color: importResult.includes('✓') ? 'var(--green)' : 'var(--orange)'}}>
+          {importResult}
+        </div>
+      )}
+
+      <div style={{marginTop:12,fontSize:'0.75em',color:'var(--text2)',lineHeight:1.5}}>
+        匯入的資料包含：入睡/起床時間、深睡、效率、睡眠心率、HRV、血氧飽和度等完整資訊。<br/>
+        AutoSleep 的深睡/品質/效率會自動轉換成本系統的格式。
       </div>
     </div>
   );
