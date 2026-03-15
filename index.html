@@ -211,10 +211,10 @@ body{font-family:-apple-system,'Segoe UI',system-ui,sans-serif;background:var(--
 .checkin-label .cl-name{font-size:0.88em;color:var(--text)}
 .checkin-label .cl-value{font-size:0.85em;font-weight:700;min-width:50px;text-align:right}
 .checkin-label .cl-hint{font-size:0.65em;color:var(--text2)}
-.score-btns{display:flex;gap:4px}
-.score-btn{flex:1;padding:8px 2px;border-radius:8px;border:1px solid var(--border);background:var(--card2);color:var(--text2);font-size:0.82em;cursor:pointer;text-align:center;transition:all 0.15s;min-width:0}
-.score-btn.active{color:#fff;border-color:transparent;font-weight:600}
-.checkin-indicator{display:flex;justify-content:space-between;font-size:0.6em;color:var(--text2);margin-top:2px;padding:0 2px}
+.score-btns{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
+.score-btn{padding:8px 4px;border-radius:10px;border:1px solid var(--border);background:var(--card2);color:var(--text2);font-size:0.75em;cursor:pointer;text-align:center;transition:all 0.15s;line-height:1.2}
+.score-btn.active{color:#fff;border-color:transparent;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,0.25)}
+.checkin-indicator{display:none}
 /* Ad-hoc symptoms toggle */
 .adhoc-header{display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:10px 0}
 .adhoc-header h3{font-size:0.9em;margin:0}
@@ -2114,32 +2114,30 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
       {checkinTab === 'morning' && (
         <div className="checkin-card morning">
           <h3 style={{color:'var(--orange)',fontSize:'0.95em',marginBottom:4}}>🌅 起床身體檢查</h3>
-          <p style={{fontSize:'0.72em',color:'var(--text2)',marginBottom:12}}>每天起床填寫，5 項指標用於追蹤劑量反應</p>
+          <p style={{fontSize:'0.72em',color:'var(--text2)',marginBottom:12}}>起床後選最符合的描述，不用想分數</p>
           {MORNING_CHECKIN.map(item => {
             const val = morningScores[item.key];
             return (
               <div className="checkin-item" key={item.key}>
                 <div className="checkin-label">
                   <span className="cl-name">{item.icon} {item.label}</span>
-                  <span className="cl-value" style={{color: val !== undefined ? item.colors[val] : 'var(--text2)'}}>
-                    {val !== undefined ? item.levels[val] : '未填'}
-                  </span>
+                  {val !== undefined && (
+                    <span className="cl-value" style={{color: item.colors[val]}}>
+                      {item.levels[val]}
+                    </span>
+                  )}
                 </div>
                 <div className="score-btns">
                   {item.levels.map((lv, i) => (
                     <button key={i} className={`score-btn ${val === i ? 'active' : ''}`}
                       style={val === i ? {background: item.colors[i]} : {}}
                       onClick={() => setMorningScores(prev => ({...prev, [item.key]: i}))}>
-                      {i}
+                      {lv}
                     </button>
                   ))}
                 </div>
-                <div className="checkin-indicator">
-                  <span>{item.levels[0]}</span>
-                  <span>{item.levels[5]}</span>
-                </div>
                 {val !== undefined && (
-                  <div style={{fontSize:'0.62em',color:'var(--text2)',marginTop:2,fontStyle:'italic'}}>
+                  <div style={{fontSize:'0.62em',color:'var(--text2)',marginTop:3,fontStyle:'italic'}}>
                     💡 {item.significance}
                   </div>
                 )}
@@ -2152,32 +2150,30 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
       {checkinTab === 'evening' && (
         <div className="checkin-card evening">
           <h3 style={{color:'var(--purple)',fontSize:'0.95em',marginBottom:4}}>🌙 晚間回顧</h3>
-          <p style={{fontSize:'0.72em',color:'var(--text2)',marginBottom:12}}>睡前填寫今日整體感受</p>
+          <p style={{fontSize:'0.72em',color:'var(--text2)',marginBottom:12}}>睡前選今天最符合的描述</p>
           {EVENING_CHECKIN.map(item => {
             const val = eveningScores[item.key];
             return (
               <div className="checkin-item" key={item.key}>
                 <div className="checkin-label">
                   <span className="cl-name">{item.icon} {item.label}</span>
-                  <span className="cl-value" style={{color: val !== undefined ? item.colors[val] : 'var(--text2)'}}>
-                    {val !== undefined ? item.levels[val] : '未填'}
-                  </span>
+                  {val !== undefined && (
+                    <span className="cl-value" style={{color: item.colors[val]}}>
+                      {item.levels[val]}
+                    </span>
+                  )}
                 </div>
                 <div className="score-btns">
                   {item.levels.map((lv, i) => (
                     <button key={i} className={`score-btn ${val === i ? 'active' : ''}`}
                       style={val === i ? {background: item.colors[i]} : {}}
                       onClick={() => setEveningScores(prev => ({...prev, [item.key]: i}))}>
-                      {i}
+                      {lv}
                     </button>
                   ))}
                 </div>
-                <div className="checkin-indicator">
-                  <span>{item.levels[0]}</span>
-                  <span>{item.levels[5]}</span>
-                </div>
                 {val !== undefined && (
-                  <div style={{fontSize:'0.62em',color:'var(--text2)',marginTop:2,fontStyle:'italic'}}>
+                  <div style={{fontSize:'0.62em',color:'var(--text2)',marginTop:3,fontStyle:'italic'}}>
                     💡 {item.significance}
                   </div>
                 )}
