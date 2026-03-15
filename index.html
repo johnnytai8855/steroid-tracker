@@ -1053,51 +1053,89 @@ const calcPKLevels = (data, numDays = 30) => {
   return levels;
 };
 
-// === Pattern Recognition Engine ===
+// === Pattern Recognition Engine (v2: uses new check-in scores + legacy symptoms) ===
 const detectPatterns = (data) => {
   const dates = Object.keys(data).sort();
-  if (dates.length < 5) return [];
+  if (dates.length < 3) return [];
   const patterns = [];
 
-  // Pattern 1: Drug dose → symptom correlation with time lag
+  // Helper: get check-in score for a date (0-5 scale), returns null if no data
+  const getScore = (date, checkinKey, itemKey) => data[date]?.[checkinKey]?.[itemKey] ?? null;
+
+  // === Pattern 1: Drug dose → Check-in score correlation ===
+  // For each drug+checkin combo, compare average scores on high-dose days vs low-dose days
   DRUGS.forEach(drug => {
     if (!drug.pk) return;
-    SYMPTOMS.filter(s => s.type === 'negative').forEach(sym => {
-      // Check 0-4 day lag
-      for (let lag = 0; lag <= 4; lag++) {
-        let highDoseWithSym = 0, highDoseNoSym = 0, lowDoseWithSym = 0, lowDoseNoSym = 0;
-        const doseValues = dates.map(d => data[d]?.drugs?.[drug.key] || 0).filter(v => v > 0);
-        if (doseValues.length < 3) continue;
-        const medianDose = doseValues.sort((a,b)=>a-b)[Math.floor(doseValues.length/2)];
+    const doseValues = dates.map(d => data[d]?.drugs?.[drug.key] || 0).filter(v => v > 0);
+    if (doseValues.length < 3) return;
+    const sorted = [...doseValues].sort((a,b)=>a-b);
+    const medianDose = sorted[Math.floor(sorted.length/2)];
 
+    // Check morning + evening indicators
+    const allCheckins = [...MORNING_CHECKIN.map(c => ({...c, src: 'morningScores'})), ...EVENING_CHECKIN.map(c => ({...c, src: 'eveningScores'}))];
+    allCheckins.forEach(item => {
+      for (let lag = 0; lag <= 3; lag++) {
+        const highScores = [], lowScores = [];
         dates.forEach((date, i) => {
           const dose = data[date]?.drugs?.[drug.key] || 0;
           if (dose === 0) return;
           const targetIdx = i + lag;
           if (targetIdx >= dates.length) return;
-          const targetDate = dates[targetIdx];
-          const hasSym = flattenSymptoms(data[targetDate]?.symptoms).includes(sym.key);
+          const score = getScore(dates[targetIdx], item.src, item.key);
+          if (score === null) return;
+          if (dose >= medianDose) highScores.push(score);
+          else lowScores.push(score);
+        });
+        if (highScores.length < 2 || lowScores.length < 2) continue;
+        const highAvg = highScores.reduce((a,b)=>a+b,0)/highScores.length;
+        const lowAvg = lowScores.reduce((a,b)=>a+b,0)/lowScores.length;
+        const diff = highAvg - lowAvg;
+        // For reversed indicators (high=bad), flip interpretation
+        const isReversed = item.key === 'face_puffiness' || item.key === 'skin_oil' || item.key === 'body_temp';
+        const effectiveDiff = isReversed ? diff : -diff; // negative = worse on high dose
+        if (Math.abs(diff) > 0.6) {
+          const direction = effectiveDiff > 0 ? '惡化' : '改善';
+          patterns.push({
+            type: 'drug_checkin',
+            drug: drug.label, indicator: item.label, lag,
+            highAvg: highAvg.toFixed(1), lowAvg: lowAvg.toFixed(1),
+            confidence: Math.min(90, Math.round(Math.abs(diff) * 30 + (highScores.length + lowScores.length) * 2)),
+            text: `${drug.label} 高劑量${lag > 0 ? ' '+lag+'天後' : ''}「${item.label}」${direction}（高劑量: ${highAvg.toFixed(1)} vs 低劑量: ${lowAvg.toFixed(1)}）`
+          });
+        }
+      }
+    });
+  });
+
+  // === Pattern 2: Drug dose → legacy symptom correlation (backward compat) ===
+  DRUGS.forEach(drug => {
+    if (!drug.pk) return;
+    SYMPTOMS.filter(s => s.type === 'negative').forEach(sym => {
+      for (let lag = 0; lag <= 4; lag++) {
+        let highDoseWithSym = 0, highDoseNoSym = 0, lowDoseWithSym = 0, lowDoseNoSym = 0;
+        const doseValues = dates.map(d => data[d]?.drugs?.[drug.key] || 0).filter(v => v > 0);
+        if (doseValues.length < 3) continue;
+        const medianDose = [...doseValues].sort((a,b)=>a-b)[Math.floor(doseValues.length/2)];
+        dates.forEach((date, i) => {
+          const dose = data[date]?.drugs?.[drug.key] || 0;
+          if (dose === 0) return;
+          const targetIdx = i + lag;
+          if (targetIdx >= dates.length) return;
+          const hasSym = flattenSymptoms(data[dates[targetIdx]]?.symptoms).includes(sym.key);
           const highDose = dose >= medianDose;
           if (highDose && hasSym) highDoseWithSym++;
           else if (highDose && !hasSym) highDoseNoSym++;
           else if (!highDose && hasSym) lowDoseWithSym++;
           else lowDoseNoSym++;
         });
-
         const totalHigh = highDoseWithSym + highDoseNoSym;
         const totalLow = lowDoseWithSym + lowDoseNoSym;
         if (totalHigh < 2 || totalLow < 2) continue;
-
         const highRate = highDoseWithSym / totalHigh;
         const lowRate = lowDoseWithSym / totalLow;
         if (highRate > lowRate + 0.25 && highRate > 0.4) {
           patterns.push({
-            type: 'drug_symptom',
-            drug: drug.label,
-            symptom: sym.label,
-            lag,
-            highRate: Math.round(highRate * 100),
-            lowRate: Math.round(lowRate * 100),
+            type: 'drug_symptom', drug: drug.label, symptom: sym.label, lag,
             confidence: Math.min(95, Math.round((highRate - lowRate) * 100 + totalHigh * 2)),
             text: `${drug.label} 劑量偏高時，${lag > 0 ? lag + '天後' : '當天'}出現「${sym.label}」的機率 ${Math.round(highRate*100)}%（低劑量時 ${Math.round(lowRate*100)}%）`
           });
@@ -1106,9 +1144,9 @@ const detectPatterns = (data) => {
     });
   });
 
-  // Pattern 2: Sleep → symptom next day
+  // === Pattern 3: Sleep → next-day check-in scores ===
   const sleepDates = dates.filter(d => data[d]?.sleep?.bedtime && data[d]?.sleep?.wakeTime);
-  if (sleepDates.length >= 5) {
+  if (sleepDates.length >= 4) {
     const sleepHours = {};
     sleepDates.forEach(d => {
       const s = data[d].sleep;
@@ -1119,38 +1157,35 @@ const detectPatterns = (data) => {
     });
     const avgSleep = Object.values(sleepHours).reduce((a,b)=>a+b,0) / Object.values(sleepHours).length;
 
-    SYMPTOMS.filter(s => s.type === 'negative').forEach(sym => {
-      let badSleepWithSym = 0, badSleepNoSym = 0, goodSleepWithSym = 0, goodSleepNoSym = 0;
+    // Check-in scores after bad vs good sleep
+    [...MORNING_CHECKIN, ...EVENING_CHECKIN].forEach(item => {
+      const src = MORNING_CHECKIN.includes(item) ? 'morningScores' : 'eveningScores';
+      const badSleepScores = [], goodSleepScores = [];
       sleepDates.forEach(d => {
         const nextIdx = dates.indexOf(d) + 1;
         if (nextIdx >= dates.length) return;
         const nextDate = dates[nextIdx];
-        const hasSym = flattenSymptoms(data[nextDate]?.symptoms).includes(sym.key);
-        const badSleep = sleepHours[d] < avgSleep - 0.5;
-        if (badSleep && hasSym) badSleepWithSym++;
-        else if (badSleep && !hasSym) badSleepNoSym++;
-        else if (!badSleep && hasSym) goodSleepWithSym++;
-        else goodSleepNoSym++;
+        const score = getScore(nextDate, src, item.key);
+        if (score === null) return;
+        if (sleepHours[d] < avgSleep - 0.5) badSleepScores.push(score);
+        else if (sleepHours[d] >= avgSleep + 0.3) goodSleepScores.push(score);
       });
-      const totalBad = badSleepWithSym + badSleepNoSym;
-      const totalGood = goodSleepWithSym + goodSleepNoSym;
-      if (totalBad < 2 || totalGood < 2) return;
-      const badRate = badSleepWithSym / totalBad;
-      const goodRate = goodSleepWithSym / totalGood;
-      if (badRate > goodRate + 0.2 && badRate > 0.35) {
+      if (badSleepScores.length < 2 || goodSleepScores.length < 2) return;
+      const badAvg = badSleepScores.reduce((a,b)=>a+b,0)/badSleepScores.length;
+      const goodAvg = goodSleepScores.reduce((a,b)=>a+b,0)/goodSleepScores.length;
+      const diff = goodAvg - badAvg;
+      if (Math.abs(diff) > 0.5) {
         patterns.push({
-          type: 'sleep_symptom',
-          symptom: sym.label,
-          badRate: Math.round(badRate * 100),
-          goodRate: Math.round(goodRate * 100),
-          confidence: Math.min(90, Math.round((badRate - goodRate) * 100 + totalBad * 2)),
-          text: `睡不好的隔天出現「${sym.label}」機率 ${Math.round(badRate*100)}%（睡好時 ${Math.round(goodRate*100)}%）`
+          type: 'sleep_checkin',
+          indicator: item.label,
+          confidence: Math.min(85, Math.round(Math.abs(diff) * 25 + (badSleepScores.length + goodSleepScores.length) * 2)),
+          text: `睡不好隔天「${item.label}」平均 ${badAvg.toFixed(1)}，睡好時 ${goodAvg.toFixed(1)}（差 ${diff > 0 ? '+' : ''}${diff.toFixed(1)}）`
         });
       }
     });
   }
 
-  // Pattern 3: Injection timing patterns
+  // === Pattern 4: Injection timing patterns ===
   DRUGS.forEach(drug => {
     const injDates = dates.filter(d => (data[d]?.drugs?.[drug.key] || 0) > 0);
     if (injDates.length < 3) return;
@@ -1161,13 +1196,39 @@ const detectPatterns = (data) => {
     }
     const avgGap = gaps.reduce((a,b)=>a+b,0) / gaps.length;
     patterns.push({
-      type: 'schedule',
-      drug: drug.label,
-      avgGap: avgGap.toFixed(1),
+      type: 'schedule', drug: drug.label, avgGap: avgGap.toFixed(1),
       text: `${drug.label} 平均每 ${avgGap.toFixed(1)} 天注射一次`,
       confidence: 100
     });
   });
+
+  // === Pattern 5: Week-over-week check-in score trends ===
+  if (dates.length >= 7) {
+    const lastWeek = dates.slice(-7);
+    const prevWeek = dates.slice(-14, -7);
+    if (prevWeek.length >= 3) {
+      [...MORNING_CHECKIN, ...EVENING_CHECKIN].forEach(item => {
+        const src = MORNING_CHECKIN.includes(item) ? 'morningScores' : 'eveningScores';
+        const recentVals = lastWeek.map(d => getScore(d, src, item.key)).filter(v => v !== null);
+        const prevVals = prevWeek.map(d => getScore(d, src, item.key)).filter(v => v !== null);
+        if (recentVals.length < 2 || prevVals.length < 2) return;
+        const recentAvg = recentVals.reduce((a,b)=>a+b,0)/recentVals.length;
+        const prevAvg = prevVals.reduce((a,b)=>a+b,0)/prevVals.length;
+        const diff = recentAvg - prevAvg;
+        const isReversed = item.key === 'face_puffiness' || item.key === 'skin_oil' || item.key === 'body_temp';
+        if (Math.abs(diff) > 0.5) {
+          const improving = isReversed ? diff < 0 : diff > 0;
+          patterns.push({
+            type: 'trend',
+            indicator: item.label,
+            direction: improving ? 'improving' : 'declining',
+            confidence: Math.min(80, Math.round(Math.abs(diff) * 25 + recentVals.length * 3)),
+            text: `「${item.label}」${improving ? '📈 改善中' : '📉 下降中'}（本週 ${recentAvg.toFixed(1)} vs 上週 ${prevAvg.toFixed(1)}）`
+          });
+        }
+      });
+    }
+  }
 
   return patterns.sort((a,b) => b.confidence - a.confidence);
 };
@@ -1667,6 +1728,7 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
   const [drugTimes, setDrugTimes] = useState(entry.drugTimes || {});
   const [showProtocolSetup, setShowProtocolSetup] = useState(false);
   const [showAllDrugs, setShowAllDrugs] = useState(false);
+  const [protocolState, setProtocolState] = useState(() => loadDailyProtocol());
   const [symptoms, setSymptoms] = useState(() => normalizeSymptoms(entry.symptoms));
   const [activePeriod, setActivePeriod] = useState('allday');
   // Structured check-in scores
@@ -2052,30 +2114,32 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
                 <div key={cat.key} style={{marginBottom:6}}>
                   <div style={{fontSize:'0.75em',color:'var(--text2)',marginBottom:4}}>{cat.label}</div>
                   {catDrugs.map(d => {
-                    const proto = loadDailyProtocol();
-                    const hasProto = proto.drugs[d.key] && parseFloat(proto.drugs[d.key]) > 0;
+                    const hasProto = protocolState.drugs[d.key] && parseFloat(protocolState.drugs[d.key]) > 0;
                     return (
                       <div key={d.key} style={{display:'flex',alignItems:'center',gap:6,marginBottom:4,paddingLeft:4}}>
                         <div style={{color:d.color,fontSize:'0.78em',minWidth:85}}>{d.label}</div>
                         <input className="drug-input" type="number" step="any" placeholder="0"
-                          defaultValue={proto.drugs[d.key] || ''}
+                          value={protocolState.drugs[d.key] || ''}
                           inputMode="decimal"
                           style={{flex:'1 1 40px',minWidth:40,padding:'6px 8px',fontSize:'0.85em'}}
                           onChange={e => {
-                            const p = loadDailyProtocol();
                             const val = parseFloat(e.target.value) || 0;
-                            if (val > 0) p.drugs[d.key] = val;
-                            else delete p.drugs[d.key];
-                            saveDailyProtocol(p);
+                            setProtocolState(prev => {
+                              const next = {...prev, drugs: {...prev.drugs}};
+                              if (val > 0) next.drugs[d.key] = val;
+                              else delete next.drugs[d.key];
+                              return next;
+                            });
                           }} />
                         <span style={{fontSize:'0.7em',color:'var(--text2)',minWidth:24}}>{d.unit}</span>
-                        <select defaultValue={proto.drugTimes?.[d.key] || ''}
+                        <select value={protocolState.drugTimes?.[d.key] || ''}
                           style={{background:'var(--bg)',border:'1px solid var(--border)',borderRadius:6,padding:'4px 6px',color:'var(--text)',fontSize:'0.72em'}}
                           onChange={e => {
-                            const p = loadDailyProtocol();
-                            if (!p.drugTimes) p.drugTimes = {};
-                            p.drugTimes[d.key] = e.target.value;
-                            saveDailyProtocol(p);
+                            setProtocolState(prev => {
+                              const next = {...prev, drugTimes: {...(prev.drugTimes || {})}};
+                              next.drugTimes[d.key] = e.target.value;
+                              return next;
+                            });
                           }}>
                           <option value="">時間</option>
                           <option value="morning">🌅 起床</option>
@@ -2090,10 +2154,10 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
               );
             })}
             <button onClick={() => {
-              const p = loadDailyProtocol();
+              saveDailyProtocol(protocolState);
               setDrugs(prev => {
                 const hasExisting = Object.values(prev).some(v => v > 0);
-                return hasExisting ? prev : { ...p.drugs };
+                return hasExisting ? prev : { ...protocolState.drugs };
               });
               setShowProtocolSetup(false);
             }} style={{width:'100%',padding:'8px',background:'var(--purple)',color:'#fff',border:'none',borderRadius:8,fontSize:'0.85em',cursor:'pointer',marginTop:6}}>
@@ -2104,8 +2168,7 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
 
         {/* Protocol drugs (auto-filled, prominent) */}
         {(() => {
-          const protocol = loadDailyProtocol();
-          const protocolKeys = Object.keys(protocol.drugs || {}).filter(k => protocol.drugs[k] > 0);
+          const protocolKeys = Object.keys(protocolState.drugs || {}).filter(k => protocolState.drugs[k] > 0);
           const nonProtocolUsed = Object.keys(drugs).filter(k => parseFloat(drugs[k]) > 0 && !protocolKeys.includes(k));
 
           return (
@@ -2296,13 +2359,27 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
           <p style={{fontSize:'0.72em',color:'var(--text2)',marginBottom:12}}>起床後選最符合的描述，不用想分數</p>
           {MORNING_CHECKIN.map(item => {
             const val = morningScores[item.key];
+            // Trend: compare to last 3 days average
+            const recentDates = Object.keys(data).sort().filter(d => d < selectedDate).slice(-3);
+            const recentVals = recentDates.map(d => data[d]?.morningScores?.[item.key]).filter(v => v !== undefined);
+            const recentAvg = recentVals.length >= 2 ? recentVals.reduce((a,b)=>a+b,0)/recentVals.length : null;
+            const isReversed = item.key === 'face_puffiness' || item.key === 'skin_oil';
+            let trendIcon = null;
+            if (val !== undefined && recentAvg !== null) {
+              const diff = val - recentAvg;
+              const improving = isReversed ? diff < -0.5 : diff > 0.5;
+              const declining = isReversed ? diff > 0.5 : diff < -0.5;
+              if (improving) trendIcon = <span style={{fontSize:'0.7em',color:'var(--green)',marginLeft:4}}>↑</span>;
+              else if (declining) trendIcon = <span style={{fontSize:'0.7em',color:'var(--red)',marginLeft:4}}>↓</span>;
+            }
             return (
               <div className="checkin-item" key={item.key}>
                 <div className="checkin-label">
-                  <span className="cl-name">{item.icon} {item.label}</span>
+                  <span className="cl-name">{item.icon} {item.label}{trendIcon}</span>
                   {val !== undefined && (
                     <span className="cl-value" style={{color: item.colors[val]}}>
                       {item.levels[val]}
+                      {recentAvg !== null && <span style={{fontSize:'0.7em',color:'var(--text2)',marginLeft:4}}>avg:{recentAvg.toFixed(1)}</span>}
                     </span>
                   )}
                 </div>
@@ -2332,13 +2409,26 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
           <p style={{fontSize:'0.72em',color:'var(--text2)',marginBottom:12}}>睡前選今天最符合的描述</p>
           {EVENING_CHECKIN.map(item => {
             const val = eveningScores[item.key];
+            const recentDates = Object.keys(data).sort().filter(d => d < selectedDate).slice(-3);
+            const recentVals = recentDates.map(d => data[d]?.eveningScores?.[item.key]).filter(v => v !== undefined);
+            const recentAvg = recentVals.length >= 2 ? recentVals.reduce((a,b)=>a+b,0)/recentVals.length : null;
+            const isReversed = item.key === 'body_temp';
+            let trendIcon = null;
+            if (val !== undefined && recentAvg !== null) {
+              const diff = val - recentAvg;
+              const improving = isReversed ? diff < -0.5 : diff > 0.5;
+              const declining = isReversed ? diff > 0.5 : diff < -0.5;
+              if (improving) trendIcon = <span style={{fontSize:'0.7em',color:'var(--green)',marginLeft:4}}>↑</span>;
+              else if (declining) trendIcon = <span style={{fontSize:'0.7em',color:'var(--red)',marginLeft:4}}>↓</span>;
+            }
             return (
               <div className="checkin-item" key={item.key}>
                 <div className="checkin-label">
-                  <span className="cl-name">{item.icon} {item.label}</span>
+                  <span className="cl-name">{item.icon} {item.label}{trendIcon}</span>
                   {val !== undefined && (
                     <span className="cl-value" style={{color: item.colors[val]}}>
                       {item.levels[val]}
+                      {recentAvg !== null && <span style={{fontSize:'0.7em',color:'var(--text2)',marginLeft:4}}>avg:{recentAvg.toFixed(1)}</span>}
                     </span>
                   )}
                 </div>
@@ -2890,44 +2980,66 @@ function ChartPage({ data, setTab }) {
     };
   }, [data, sortedDates]);
 
-  // Correlation analysis
+  // Correlation analysis v2: drug dose → check-in scores + legacy symptoms
   const correlations = useMemo(() => {
-    if (sortedDates.length < 7) return null;
+    if (sortedDates.length < 5) return null;
     const results = {};
-    SYMPTOMS.filter(s => s.type === 'negative').forEach(sym => {
-      const withDoses = {};
-      const withoutDoses = {};
-      DRUGS.forEach(drug => { withDoses[drug.key] = []; withoutDoses[drug.key] = []; });
 
+    // === New: Drug dose → Check-in score correlation ===
+    const allCheckins = [...MORNING_CHECKIN.map(c => ({...c, src: 'morningScores'})), ...EVENING_CHECKIN.map(c => ({...c, src: 'eveningScores'}))];
+    allCheckins.forEach(item => {
+      const drugCorr = [];
+      DRUGS.forEach(drug => {
+        // Get dates where drug was used
+        const doseMap = {};
+        sortedDates.forEach(d => { doseMap[d] = data[d]?.drugs?.[drug.key] || 0; });
+        const doseDays = sortedDates.filter(d => doseMap[d] > 0);
+        const noDoseDays = sortedDates.filter(d => doseMap[d] === 0);
+        if (doseDays.length < 2 || noDoseDays.length < 2) return;
+
+        // Compare score on dose days (or day after) vs no-dose days
+        const getScoreForDays = (days) => days.map(d => data[d]?.[item.src]?.[item.key]).filter(v => v !== undefined);
+        const doseScores = getScoreForDays(doseDays);
+        const noDoseScores = getScoreForDays(noDoseDays);
+        if (doseScores.length < 2 || noDoseScores.length < 2) return;
+
+        const doseAvg = doseScores.reduce((a,b)=>a+b,0)/doseScores.length;
+        const noDoseAvg = noDoseScores.reduce((a,b)=>a+b,0)/noDoseScores.length;
+        const diff = doseAvg - noDoseAvg;
+        if (Math.abs(diff) > 0.4) {
+          drugCorr.push({ drug: drug.label, diff: diff.toFixed(1), doseAvg: doseAvg.toFixed(1), noDoseAvg: noDoseAvg.toFixed(1), n: doseScores.length });
+        }
+      });
+      if (drugCorr.length > 0) {
+        results['checkin_' + item.key] = { label: item.icon + ' ' + item.label + '（Check-in）', drugs: drugCorr, isCheckin: true };
+      }
+    });
+
+    // === Legacy: Drug dose → old symptom correlation ===
+    SYMPTOMS.filter(s => s.type === 'negative').forEach(sym => {
+      const withDoses = {}, withoutDoses = {};
+      DRUGS.forEach(drug => { withDoses[drug.key] = []; withoutDoses[drug.key] = []; });
       sortedDates.forEach((date, i) => {
-        const entry = data[date];
-        const hasSymptom = flattenSymptoms(entry.symptoms).includes(sym.key);
-        // 3-day lookback
+        const hasSymptom = flattenSymptoms(data[date]?.symptoms).includes(sym.key);
         DRUGS.forEach(drug => {
           let total = 0, count = 0;
           for (let j = Math.max(0, i-2); j <= i; j++) {
-            const d2 = data[sortedDates[j]];
-            total += (d2?.drugs?.[drug.key]) || 0;
-            count++;
+            total += (data[sortedDates[j]]?.drugs?.[drug.key]) || 0; count++;
           }
           const avg = count ? total / count : 0;
           if (hasSymptom) withDoses[drug.key].push(avg);
           else withoutDoses[drug.key].push(avg);
         });
       });
-
       DRUGS.forEach(drug => {
-        const w = withDoses[drug.key];
-        const wo = withoutDoses[drug.key];
+        const w = withDoses[drug.key], wo = withoutDoses[drug.key];
         if (w.length >= 2 && wo.length >= 2) {
           const wAvg = w.reduce((a,b)=>a+b,0)/w.length;
           const woAvg = wo.reduce((a,b)=>a+b,0)/wo.length;
           const diff = wAvg - woAvg;
           if (Math.abs(diff) > 0.5) {
             if (!results[sym.key]) results[sym.key] = { label: sym.label, drugs: [] };
-            results[sym.key].drugs.push({
-              drug: drug.label, diff: diff.toFixed(1), withAvg: wAvg.toFixed(1), withoutAvg: woAvg.toFixed(1), n: w.length
-            });
+            results[sym.key].drugs.push({ drug: drug.label, diff: diff.toFixed(1), withAvg: wAvg.toFixed(1), withoutAvg: woAvg.toFixed(1), n: w.length });
           }
         }
       });
@@ -3026,16 +3138,18 @@ function ChartPage({ data, setTab }) {
 
       {correlations && Object.keys(correlations).length > 0 && (
         <div className="card">
-          <h3>🔍 劑量與症狀關聯分析</h3>
-          <p style={{color:'var(--text2)',fontSize:'0.8em',marginBottom:12}}>比較出現症狀時 vs 無症狀時，前3天的平均劑量差異</p>
+          <h3>🔍 劑量 vs 身體指標關聯分析</h3>
+          <p style={{color:'var(--text2)',fontSize:'0.8em',marginBottom:12}}>比較用藥日 vs 無用藥日的 Check-in 分數差異，以及舊版症狀關聯</p>
           {Object.values(correlations).map(corr => (
             <div key={corr.label} style={{marginBottom:16}}>
-              <div style={{fontWeight:600,color:'var(--orange)',marginBottom:6}}>{corr.label}</div>
+              <div style={{fontWeight:600,color: corr.isCheckin ? 'var(--blue)' : 'var(--orange)',marginBottom:6}}>{corr.label}</div>
               {corr.drugs.map(d => (
                 <div key={d.drug} style={{fontSize:'0.85em',padding:'4px 0',display:'flex',justifyContent:'space-between'}}>
                   <span>{d.drug}</span>
-                  <span style={{color: parseFloat(d.diff) > 0 ? 'var(--red)' : 'var(--green)'}}>
-                    {parseFloat(d.diff) > 0 ? '↑' : '↓'} {d.diff} (有:{d.withAvg} vs 無:{d.withoutAvg}, n={d.n})
+                  <span style={{color: parseFloat(d.diff) > 0 ? 'var(--green)' : 'var(--red)'}}>
+                    {parseFloat(d.diff) > 0 ? '↑' : '↓'} {d.diff}
+                    {corr.isCheckin ? ` (用藥:${d.doseAvg} vs 無:${d.noDoseAvg})` : ` (有:${d.withAvg} vs 無:${d.withoutAvg})`}
+                    {' '}n={d.n}
                   </span>
                 </div>
               ))}
