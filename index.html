@@ -172,6 +172,36 @@ body{font-family:-apple-system,'Segoe UI',system-ui,sans-serif;background:var(--
 /* Back button */
 .back-btn{display:inline-flex;align-items:center;gap:4px;background:none;border:none;color:var(--blue);font-size:0.9em;cursor:pointer;padding:8px 0;margin-bottom:8px}
 .back-btn:active{opacity:0.7}
+/* Injection site body map */
+.site-grid{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.site-btn{padding:6px 10px;border-radius:16px;border:1px solid var(--border);background:var(--card2);color:var(--text2);font-size:0.78em;cursor:pointer;transition:all 0.2s;position:relative}
+.site-btn.active{background:var(--green);color:#fff;border-color:var(--green)}
+.site-btn.recent{border-color:var(--orange)}
+.site-btn .site-days{position:absolute;top:-6px;right:-6px;background:var(--orange);color:#fff;font-size:0.6em;padding:1px 4px;border-radius:8px}
+/* Inventory */
+.inv-bar{height:6px;background:var(--card2);border-radius:3px;overflow:hidden;margin-top:4px}
+.inv-fill{height:100%;border-radius:3px;transition:width 0.3s}
+/* Blood marker */
+.marker-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)}
+.marker-row:last-child{border-bottom:none}
+.marker-label{flex:1;font-size:0.82em}
+.marker-value{width:70px}
+.marker-value input{width:100%;background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:6px;color:var(--text);font-size:0.85em;text-align:right;outline:none}
+.marker-value input:focus{border-color:var(--blue)}
+.marker-status{font-size:0.72em;padding:2px 6px;border-radius:8px;white-space:nowrap}
+.marker-range{font-size:0.65em;color:var(--text2)}
+/* Protocol */
+.protocol-card{background:var(--card2);border-radius:8px;padding:10px;margin-bottom:8px;border-left:3px solid var(--blue)}
+.protocol-active{border-left-color:var(--green)}
+/* Dose calc */
+.calc-row{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.calc-input{flex:1;background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:0.9em;outline:none}
+.calc-input:focus{border-color:var(--blue)}
+.calc-result{background:var(--card2);border-radius:8px;padding:10px;text-align:center;font-size:1.1em;font-weight:600;color:var(--blue)}
+/* Drug category collapse */
+.drug-cat-header{display:flex;align-items:center;justify-content:space-between;padding:8px 0;cursor:pointer;border-bottom:1px solid var(--border);margin-bottom:8px}
+.drug-cat-header h4{font-size:0.85em;margin:0}
+.drug-cat-toggle{color:var(--text2);font-size:0.8em}
 </style>
 </head>
 <body>
@@ -180,22 +210,168 @@ body{font-family:-apple-system,'Segoe UI',system-ui,sans-serif;background:var(--
 const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
 const DRUGS = [
-  { key: 'sus', label: 'Sustanon', unit: 'ml', color: '#60a5fa',
-    // Sustanon: 4 esters blend per 1ml=250mg: propionate 30mg(0.8d), phenylprop 60mg(1.5d), isocaproate 60mg(4d), decanoate 100mg(7.5d)
+  // === Testosterone Esters ===
+  { key: 'sus', label: 'Sustanon', unit: 'ml', color: '#60a5fa', cat: 'testosterone', conc: 250,
     pk: { esters: [{mg:30,halfLife:0.8},{mg:60,halfLife:1.5},{mg:60,halfLife:4},{mg:100,halfLife:7.5}], perUnit: 250, aromatize: 0.05 }},
-  { key: 'mast', label: 'Masteron', unit: 'mg', color: '#f472b6',
-    pk: { halfLife: 2.5, perUnit: 1, aromatize: 0 }},
-  { key: 'primo', label: 'Primobolan', unit: 'mg', color: '#34d399',
-    pk: { halfLife: 5, perUnit: 1, aromatize: 0 }},
-  { key: 'cyp', label: 'Test Cypionate', unit: 'mg', color: '#a78bfa',
+  { key: 'cyp', label: 'Test Cypionate', unit: 'mg', color: '#a78bfa', cat: 'testosterone', conc: 250,
     pk: { halfLife: 8, perUnit: 1, aromatize: 0.05 }},
-  { key: 'hcg', label: 'HCG', unit: 'mcg', color: '#c084fc',
+  { key: 'enth', label: 'Test Enanthate', unit: 'mg', color: '#818cf8', cat: 'testosterone', conc: 250,
+    pk: { halfLife: 7, perUnit: 1, aromatize: 0.05 }},
+  { key: 'prop', label: 'Test Propionate', unit: 'mg', color: '#93c5fd', cat: 'testosterone', conc: 100,
+    pk: { halfLife: 0.8, perUnit: 1, aromatize: 0.05 }},
+  { key: 'undc', label: 'Test Undecanoate', unit: 'mg', color: '#6366f1', cat: 'testosterone', conc: 250,
+    pk: { halfLife: 21, perUnit: 1, aromatize: 0.04 }},
+  // === DHT Derivatives (non-aromatizing) ===
+  { key: 'mast_p', label: 'Masteron Prop', unit: 'mg', color: '#f472b6', cat: 'dht', conc: 100,
+    pk: { halfLife: 2.5, perUnit: 1, aromatize: 0 }},
+  { key: 'mast_e', label: 'Masteron Enanth', unit: 'mg', color: '#ec4899', cat: 'dht', conc: 200,
+    pk: { halfLife: 7, perUnit: 1, aromatize: 0 }},
+  { key: 'primo', label: 'Primobolan', unit: 'mg', color: '#34d399', cat: 'dht', conc: 100,
+    pk: { halfLife: 5, perUnit: 1, aromatize: 0 }},
+  { key: 'winny', label: 'Winstrol', unit: 'mg', color: '#2dd4bf', cat: 'dht', conc: 50,
+    pk: { halfLife: 1, perUnit: 1, aromatize: 0 }},
+  { key: 'var', label: 'Anavar', unit: 'mg', color: '#5eead4', cat: 'dht', conc: null,
+    pk: { halfLife: 0.4, perUnit: 1, aromatize: 0 }},
+  { key: 'prov', label: 'Proviron', unit: 'mg', color: '#99f6e4', cat: 'dht', conc: null,
+    pk: { halfLife: 0.5, perUnit: 1, aromatize: 0 }},
+  // === 19-nor compounds ===
+  { key: 'deca', label: 'Deca (NPP長酯)', unit: 'mg', color: '#fbbf24', cat: '19nor', conc: 250,
+    pk: { halfLife: 15, perUnit: 1, aromatize: 0.02 }},
+  { key: 'npp', label: 'NPP (短酯)', unit: 'mg', color: '#f59e0b', cat: '19nor', conc: 100,
+    pk: { halfLife: 2.5, perUnit: 1, aromatize: 0.02 }},
+  { key: 'tren_a', label: 'Trenbolone Ace', unit: 'mg', color: '#ef4444', cat: '19nor', conc: 100,
+    pk: { halfLife: 1, perUnit: 1, aromatize: 0 }},
+  { key: 'tren_e', label: 'Trenbolone Enanth', unit: 'mg', color: '#dc2626', cat: '19nor', conc: 200,
+    pk: { halfLife: 7, perUnit: 1, aromatize: 0 }},
+  // === Peptides & Ancillaries ===
+  { key: 'hcg', label: 'HCG', unit: 'IU', color: '#c084fc', cat: 'ancillary', conc: null,
     pk: { halfLife: 1.5, perUnit: 0.001, aromatize: 0.02 }},
-  { key: 'ai', label: 'Aromasin', unit: '片', color: '#fb923c',
-    pk: null }, // AI inhibitor - handled separately
-  { key: 'cere', label: 'Cerebrolysin', unit: 'mg', color: '#22d3ee',
-    pk: null }, // nootropic, no hormonal effect
+  { key: 'hgh', label: 'HGH', unit: 'IU', color: '#d946ef', cat: 'peptide', conc: null,
+    pk: { halfLife: 0.15, perUnit: 1, aromatize: 0 }},
+  { key: 'bpc', label: 'BPC-157', unit: 'mcg', color: '#e879f9', cat: 'peptide', conc: null,
+    pk: null },
+  // === AI & Ancillaries ===
+  { key: 'ai', label: 'Aromasin', unit: '片', color: '#fb923c', cat: 'ai', conc: null,
+    pk: null },
+  { key: 'adex', label: 'Arimidex', unit: 'mg', color: '#fdba74', cat: 'ai', conc: null,
+    pk: null },
+  { key: 'nolva', label: 'Nolvadex', unit: 'mg', color: '#fed7aa', cat: 'serm', conc: null,
+    pk: null },
+  { key: 'clomid', label: 'Clomid', unit: 'mg', color: '#fde68a', cat: 'serm', conc: null,
+    pk: null },
+  // === Other ===
+  { key: 'cere', label: 'Cerebrolysin', unit: 'mg', color: '#22d3ee', cat: 'other', conc: null,
+    pk: null },
 ];
+
+// Drug category labels
+const DRUG_CATEGORIES = [
+  { key: 'testosterone', label: '💉 睪酮' },
+  { key: 'dht', label: '⚡ DHT衍生物' },
+  { key: '19nor', label: '🔥 19-Nor' },
+  { key: 'peptide', label: '🧬 肽類' },
+  { key: 'ancillary', label: '💊 輔助' },
+  { key: 'ai', label: '🛡️ AI抗雌' },
+  { key: 'serm', label: '🔄 SERM' },
+  { key: 'other', label: '📦 其他' },
+];
+
+// === Injection Site Rotation ===
+const INJECTION_SITES = [
+  { key: 'delt_l', label: '左三角肌', short: '左肩', area: 'deltoid' },
+  { key: 'delt_r', label: '右三角肌', short: '右肩', area: 'deltoid' },
+  { key: 'glute_l', label: '左臀肌', short: '左臀', area: 'glute' },
+  { key: 'glute_r', label: '右臀肌', short: '右臀', area: 'glute' },
+  { key: 'vg_l', label: '左腹股溝', short: '左VG', area: 'ventrogluteal' },
+  { key: 'vg_r', label: '右腹股溝', short: '右VG', area: 'ventrogluteal' },
+  { key: 'quad_l', label: '左股四頭', short: '左腿', area: 'quad' },
+  { key: 'quad_r', label: '右股四頭', short: '右腿', area: 'quad' },
+  { key: 'subq_belly', label: '皮下-腹部', short: '腹SubQ', area: 'subq' },
+  { key: 'subq_love', label: '皮下-側腹', short: '側SubQ', area: 'subq' },
+];
+
+// Get injection site rotation suggestion
+const getNextInjectionSite = (data, selectedDate) => {
+  const dates = Object.keys(data).sort().filter(d => d <= selectedDate);
+  const recentSites = [];
+  dates.slice(-20).forEach(d => {
+    if (data[d]?.injectionSite) recentSites.push({ date: d, site: data[d].injectionSite });
+  });
+  if (!recentSites.length) return { suggestion: INJECTION_SITES[0].key, history: [] };
+  const lastSite = recentSites[recentSites.length - 1].site;
+  const lastIdx = INJECTION_SITES.findIndex(s => s.key === lastSite);
+  const nextIdx = (lastIdx + 1) % INJECTION_SITES.length;
+  return { suggestion: INJECTION_SITES[nextIdx].key, history: recentSites.slice(-6) };
+};
+
+// === Vial Inventory System ===
+const INVENTORY_KEY = 'steroid_inventory';
+const loadInventory = () => {
+  try { return JSON.parse(localStorage.getItem(INVENTORY_KEY) || '{}'); } catch { return {}; }
+};
+const saveInventory = (inv) => localStorage.setItem(INVENTORY_KEY, JSON.stringify(inv));
+
+// Calculate remaining in vial based on usage history
+const calcVialRemaining = (drugKey, inventory, data) => {
+  const vial = inventory[drugKey];
+  if (!vial) return null;
+  const totalUsed = Object.values(data).reduce((sum, entry) => sum + (entry.drugs?.[drugKey] || 0), 0);
+  const usedSinceOpen = Object.keys(data).sort().filter(d => d >= (vial.openDate || '2000-01-01'))
+    .reduce((sum, d) => sum + (data[d]?.drugs?.[drugKey] || 0), 0);
+  const remaining = vial.totalAmount - usedSinceOpen;
+  const drug = DRUGS.find(d => d.key === drugKey);
+  const schedule = DRUG_SCHEDULES[drugKey];
+  const avgDose = totalUsed / Math.max(Object.keys(data).filter(d => (data[d]?.drugs?.[drugKey] || 0) > 0).length, 1);
+  const dosesLeft = avgDose > 0 ? Math.floor(remaining / avgDose) : null;
+  const daysLeft = schedule && avgDose > 0 ? Math.round(dosesLeft * schedule.intervalDays) : null;
+  return { remaining: Math.max(0, remaining), totalAmount: vial.totalAmount, usedSinceOpen, dosesLeft, daysLeft, isLow: remaining < vial.totalAmount * 0.2, isEmpty: remaining <= 0 };
+};
+
+// === Blood Work Reference Ranges & Alerts ===
+const BLOOD_MARKERS = [
+  { key: 'total_t', label: 'Total T', unit: 'ng/dL', low: 300, high: 1000, critical_low: 200, critical_high: 1500, color: '#60a5fa' },
+  { key: 'free_t', label: 'Free T', unit: 'pg/mL', low: 8.7, high: 25, critical_low: 5, critical_high: 50, color: '#818cf8' },
+  { key: 'e2', label: 'Estradiol (E2)', unit: 'pg/mL', low: 15, high: 45, critical_low: 5, critical_high: 80, color: '#f472b6' },
+  { key: 'shbg', label: 'SHBG', unit: 'nmol/L', low: 16, high: 55, critical_low: 10, critical_high: 80, color: '#a78bfa' },
+  { key: 'hematocrit', label: '紅血球容積比 (HCT)', unit: '%', low: 38, high: 52, critical_low: 35, critical_high: 54, color: '#ef4444' },
+  { key: 'hemoglobin', label: '血紅素 (Hb)', unit: 'g/dL', low: 13.5, high: 17.5, critical_low: 12, critical_high: 19, color: '#dc2626' },
+  { key: 'psa', label: 'PSA', unit: 'ng/mL', low: 0, high: 4.0, critical_low: 0, critical_high: 4.0, color: '#fb923c' },
+  { key: 'alt', label: 'ALT (肝指數)', unit: 'U/L', low: 7, high: 56, critical_low: 0, critical_high: 100, color: '#fbbf24' },
+  { key: 'ast', label: 'AST', unit: 'U/L', low: 10, high: 40, critical_low: 0, critical_high: 80, color: '#f59e0b' },
+  { key: 'creatinine', label: '肌酐酸', unit: 'mg/dL', low: 0.7, high: 1.3, critical_low: 0.5, critical_high: 2.0, color: '#34d399' },
+  { key: 'ldl', label: 'LDL膽固醇', unit: 'mg/dL', low: 0, high: 130, critical_low: 0, critical_high: 160, color: '#fb923c' },
+  { key: 'hdl', label: 'HDL膽固醇', unit: 'mg/dL', low: 40, high: 100, critical_low: 30, critical_high: 200, color: '#34d399' },
+  { key: 'prolactin', label: '泌乳素', unit: 'ng/mL', low: 2, high: 18, critical_low: 0, critical_high: 30, color: '#d946ef' },
+  { key: 'dht', label: 'DHT', unit: 'pg/mL', low: 300, high: 850, critical_low: 200, critical_high: 1200, color: '#c084fc' },
+  { key: 'igf1', label: 'IGF-1', unit: 'ng/mL', low: 100, high: 350, critical_low: 50, critical_high: 500, color: '#22d3ee' },
+  { key: 'tsh', label: 'TSH', unit: 'mIU/L', low: 0.4, high: 4.0, critical_low: 0.1, critical_high: 10, color: '#e879f9' },
+  { key: 'bp_sys', label: '收縮壓', unit: 'mmHg', low: 90, high: 130, critical_low: 80, critical_high: 140, color: '#ef4444' },
+  { key: 'bp_dia', label: '舒張壓', unit: 'mmHg', low: 60, high: 85, critical_low: 50, critical_high: 90, color: '#dc2626' },
+];
+
+const getMarkerStatus = (marker, value) => {
+  if (value === undefined || value === null || value === '') return null;
+  const v = parseFloat(value);
+  if (isNaN(v)) return null;
+  if (v <= marker.critical_low) return { status: 'critical_low', label: '⚠️ 嚴重偏低', color: '#ef4444' };
+  if (v >= marker.critical_high) return { status: 'critical_high', label: '⚠️ 嚴重偏高', color: '#ef4444' };
+  if (v < marker.low) return { status: 'low', label: '偏低', color: '#fb923c' };
+  if (v > marker.high) return { status: 'high', label: '偏高', color: '#fb923c' };
+  return { status: 'normal', label: '正常', color: '#34d399' };
+};
+
+// === Dose Calculator ===
+const calcDose = (mgNeeded, concMgPerMl) => {
+  if (!mgNeeded || !concMgPerMl) return null;
+  return { ml: (mgNeeded / concMgPerMl).toFixed(2), mg: mgNeeded, concMgPerMl };
+};
+
+// === Cycle/Protocol Management ===
+const PROTOCOL_KEY = 'steroid_protocols';
+const loadProtocols = () => {
+  try { return JSON.parse(localStorage.getItem(PROTOCOL_KEY) || '[]'); } catch { return []; }
+};
+const saveProtocols = (p) => localStorage.setItem(PROTOCOL_KEY, JSON.stringify(p));
 
 // Symptoms organized by category for smarter analysis
 // Categories map to hormonal indicators: E2, T-level, DHT, cortisol, etc.
@@ -271,11 +447,20 @@ const INJECT_PRESETS = [
 
 // Recommended injection schedules per drug (interval in days)
 const DRUG_SCHEDULES = {
-  sus: { intervalDays: 5, label: '每5天', bestTime: 'morning', note: '建議早上打，因為體內睪酮自然在早上最高' },
-  cyp: { intervalDays: 3.5, label: '每3.5天', bestTime: 'morning', note: '半衰期8天，每3.5天一次可保持穩定血濃度' },
-  mast: { intervalDays: 2, label: '每2天', bestTime: 'any', note: '半衰期短，需頻繁注射維持穩定' },
-  primo: { intervalDays: 3.5, label: '每3.5天', bestTime: 'any', note: '半衰期5天，每週兩次較理想' },
-  hcg: { intervalDays: 3, label: '每3天', bestTime: 'any', note: '半衰期短，少量多次效果較好' },
+  sus: { intervalDays: 5, label: '每5天', bestTime: 'morning', note: '建議早上打，4種酯混合' },
+  cyp: { intervalDays: 3.5, label: '每3.5天', bestTime: 'morning', note: '半衰期8天，E3.5D穩定' },
+  enth: { intervalDays: 3.5, label: '每3.5天', bestTime: 'morning', note: '半衰期7天，E3.5D穩定' },
+  prop: { intervalDays: 1, label: '每天或隔天', bestTime: 'morning', note: '半衰期短，需每日注射' },
+  undc: { intervalDays: 14, label: '每2週', bestTime: 'any', note: '超長酯，Nebido 每10-14週' },
+  mast_p: { intervalDays: 2, label: '每2天', bestTime: 'any', note: '短酯需頻繁注射' },
+  mast_e: { intervalDays: 3.5, label: '每3.5天', bestTime: 'any', note: '長酯，每週兩次' },
+  primo: { intervalDays: 3.5, label: '每3.5天', bestTime: 'any', note: '半衰期5天，每週兩次' },
+  deca: { intervalDays: 7, label: '每週', bestTime: 'any', note: '長酯，每週一次即可' },
+  npp: { intervalDays: 2, label: '每2天', bestTime: 'any', note: '短酯需頻繁注射' },
+  tren_a: { intervalDays: 1, label: '每天', bestTime: 'any', note: '超短酯，需每日注射' },
+  tren_e: { intervalDays: 3.5, label: '每3.5天', bestTime: 'any', note: '長酯，每週兩次' },
+  hcg: { intervalDays: 3, label: '每3天', bestTime: 'any', note: '半衰期短，少量多次' },
+  hgh: { intervalDays: 1, label: '每天', bestTime: 'morning', note: '建議早上空腹或睡前' },
 };
 
 // Calculate missed injection info
@@ -1305,6 +1490,15 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
   const defaultSleep = { bedtime: '', wakeTime: '', quality: 0, deep: '', rem: '', light: '', awake: '', note: '', source: 'manual' };
   const [sleep, setSleep] = useState(() => ({ ...defaultSleep, ...(entry.sleep || {}) }));
   const [sleepImportMsg, setSleepImportMsg] = useState('');
+  // Injection site rotation
+  const [injectionSite, setInjectionSite] = useState(entry.injectionSite || '');
+  // Collapsible drug categories (only show used + testosterone by default)
+  const [expandedCats, setExpandedCats] = useState(() => {
+    const used = new Set();
+    Object.keys(entry.drugs || {}).forEach(k => { const d = DRUGS.find(x => x.key === k); if (d) used.add(d.cat); });
+    used.add('testosterone');
+    return used;
+  });
   const faceInputRef = useRef(null);
   const bodyInputRef = useRef(null);
 
@@ -1318,7 +1512,7 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
     setWeight(e.weight || '');
     setSleep({ ...defaultSleep, ...(e.sleep || {}) });
     setSleepImportMsg('');
-    setSaveStatus('');
+    setInjectionSite(e.injectionSite || '');
     // Load photos for this date (async IndexedDB)
     setFacePhoto(null); setBodyPhoto(null);
     setFaceAnalysis(null); setBodyAnalysis(null);
@@ -1410,8 +1604,9 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
     const hasSleep = sleep.bedtime || sleep.wakeTime || sleep.quality;
     const cleanSleep = hasSleep ? sleep : undefined;
     const cleanWeight = weight ? parseFloat(weight) : undefined;
-    const newData = { ...data, [selectedDate]: { ...existing, drugs: cleanDrugs, drugTimes: cleanTimes, symptoms, note, sleep: cleanSleep, weight: cleanWeight, updatedAt: new Date().toISOString() } };
-    if (!hasAnySymptoms && !Object.keys(cleanDrugs).length && !note && !existing.hasPhotos && !hasSleep && !cleanWeight) delete newData[selectedDate];
+    const cleanSite = injectionSite || undefined;
+    const newData = { ...data, [selectedDate]: { ...existing, drugs: cleanDrugs, drugTimes: cleanTimes, symptoms, note, sleep: cleanSleep, weight: cleanWeight, injectionSite: cleanSite, updatedAt: new Date().toISOString() } };
+    if (!hasAnySymptoms && !Object.keys(cleanDrugs).length && !note && !existing.hasPhotos && !hasSleep && !cleanWeight && !cleanSite) delete newData[selectedDate];
     updateData(newData);
     setSaveStatus('saved');
     setTimeout(() => setSaveStatus(''), 1500);
@@ -1620,53 +1815,104 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
 
       <div className="card">
         <h3>💊 藥物劑量</h3>
-        {DRUGS.map(d => {
-          const missed = getMissedInjectionInfo(data, d.key, selectedDate);
+        {DRUG_CATEGORIES.map(cat => {
+          const catDrugs = DRUGS.filter(d => d.cat === cat.key);
+          const hasUsed = catDrugs.some(d => drugs[d.key] && parseFloat(drugs[d.key]) > 0);
+          const isOpen = expandedCats.has(cat.key);
+          const hasMissed = catDrugs.some(d => getMissedInjectionInfo(data, d.key, selectedDate));
           return (
-            <div key={d.key} style={{marginBottom:12}}>
-              {missed && (
-                <div style={{background: missed.urgency === 'high' ? 'rgba(239,68,68,0.15)' : missed.urgency === 'medium' ? 'rgba(251,146,60,0.15)' : 'rgba(96,165,250,0.15)',
-                  border: `1px solid ${missed.urgency === 'high' ? 'var(--red)' : missed.urgency === 'medium' ? 'var(--orange)' : 'var(--blue)'}`,
-                  borderRadius:8,padding:'8px 10px',marginBottom:6,fontSize:'0.78em'}}>
-                  <div style={{fontWeight:600,color: missed.urgency === 'high' ? 'var(--red)' : missed.urgency === 'medium' ? 'var(--orange)' : 'var(--blue)'}}>
-                    ⏰ {d.label}：距上次 {missed.daysSince} 天（建議{missed.label}）
-                  </div>
-                  <div style={{color:'var(--text2)',marginTop:3}}>{missed.suggestTime}</div>
-                </div>
-              )}
-              <div className="drug-row" style={{flexWrap:'wrap'}}>
-                <div className="drug-label" style={{color: d.color}}>{d.label}</div>
-                <input className="drug-input" type="number" step="any" placeholder="0"
-                  value={drugs[d.key] || ''} onChange={e => setDrug(d.key, e.target.value)}
-                  inputMode="decimal" style={{flex:'1 1 60px',minWidth:60}} />
-                <div className="drug-unit">{d.unit}</div>
-                <input type="time" value={drugTimes[d.key] || ''}
-                  onChange={e => setDrugTime(d.key, e.target.value)}
-                  style={{background:'var(--card2)',border:'1px solid var(--border)',borderRadius:8,padding:'6px 8px',color:'var(--text)',fontSize:'0.82em',outline:'none',width:90,flexShrink:0}}
-                  placeholder="時間" />
+            <div key={cat.key} style={{marginBottom:6}}>
+              <div className="drug-cat-header" onClick={() => setExpandedCats(prev => {
+                const next = new Set(prev);
+                next.has(cat.key) ? next.delete(cat.key) : next.add(cat.key);
+                return next;
+              })}>
+                <h4 style={{color: hasUsed ? 'var(--blue)' : 'var(--text2)'}}>
+                  {cat.label} {hasUsed && <span style={{fontSize:'0.7em',color:'var(--green)'}}>●</span>}
+                  {hasMissed && <span style={{fontSize:'0.7em',color:'var(--orange)'}}> ⏰</span>}
+                </h4>
+                <span className="drug-cat-toggle">{isOpen ? '收起 ▲' : '展開 ▼'}</span>
               </div>
-              {/* Quick time presets */}
-              {(drugs[d.key] && parseFloat(drugs[d.key]) > 0) && (
-                <div style={{display:'flex',gap:4,marginTop:4,marginLeft:100,flexWrap:'wrap'}}>
-                  {INJECT_PRESETS.map(p => (
-                    <button key={p.key} onClick={() => setDrugTime(d.key, p.getTime())}
-                      style={{background: drugTimes[d.key] === p.getTime() ? 'var(--blue)' : 'var(--card2)',
-                        border:'1px solid var(--border)',borderRadius:14,padding:'4px 10px',
-                        color: drugTimes[d.key] === p.getTime() ? '#fff' : 'var(--text2)',fontSize:'0.72em',cursor:'pointer',whiteSpace:'nowrap'}}>
-                      {p.icon} {p.label}
-                    </button>
-                  ))}
-                  {DRUG_SCHEDULES[d.key] && (
-                    <span style={{fontSize:'0.68em',color:'var(--text2)',alignSelf:'center',marginLeft:4}}>
-                      💡 {DRUG_SCHEDULES[d.key].note}
-                    </span>
-                  )}
-                </div>
-              )}
+              {isOpen && catDrugs.map(d => {
+                const missed = getMissedInjectionInfo(data, d.key, selectedDate);
+                return (
+                  <div key={d.key} style={{marginBottom:10,paddingLeft:4}}>
+                    {missed && (
+                      <div style={{background: missed.urgency === 'high' ? 'rgba(239,68,68,0.15)' : missed.urgency === 'medium' ? 'rgba(251,146,60,0.15)' : 'rgba(96,165,250,0.15)',
+                        border: `1px solid ${missed.urgency === 'high' ? 'var(--red)' : missed.urgency === 'medium' ? 'var(--orange)' : 'var(--blue)'}`,
+                        borderRadius:8,padding:'6px 8px',marginBottom:4,fontSize:'0.75em'}}>
+                        ⏰ {d.label}：距上次 {missed.daysSince} 天 — {missed.suggestTime}
+                      </div>
+                    )}
+                    <div className="drug-row" style={{flexWrap:'wrap'}}>
+                      <div className="drug-label" style={{color: d.color,minWidth:90,fontSize:'0.82em'}}>{d.label}</div>
+                      <input className="drug-input" type="number" step="any" placeholder="0"
+                        value={drugs[d.key] || ''} onChange={e => setDrug(d.key, e.target.value)}
+                        inputMode="decimal" style={{flex:'1 1 50px',minWidth:50}} />
+                      <div className="drug-unit" style={{fontSize:'0.75em'}}>{d.unit}</div>
+                      <input type="time" value={drugTimes[d.key] || ''}
+                        onChange={e => setDrugTime(d.key, e.target.value)}
+                        style={{background:'var(--card2)',border:'1px solid var(--border)',borderRadius:8,padding:'5px 6px',color:'var(--text)',fontSize:'0.78em',outline:'none',width:85,flexShrink:0}} />
+                    </div>
+                    {(drugs[d.key] && parseFloat(drugs[d.key]) > 0) && (
+                      <div style={{display:'flex',gap:4,marginTop:3,marginLeft:90,flexWrap:'wrap',alignItems:'center'}}>
+                        {INJECT_PRESETS.map(p => (
+                          <button key={p.key} onClick={() => setDrugTime(d.key, p.getTime())}
+                            style={{background:'var(--card2)',border:'1px solid var(--border)',borderRadius:12,padding:'3px 8px',
+                              color:'var(--text2)',fontSize:'0.68em',cursor:'pointer',whiteSpace:'nowrap'}}>
+                            {p.icon} {p.label}
+                          </button>
+                        ))}
+                        {DRUG_SCHEDULES[d.key] && (
+                          <span style={{fontSize:'0.62em',color:'var(--text2)'}}>💡{DRUG_SCHEDULES[d.key].note}</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           );
         })}
       </div>
+
+      {/* Injection Site Rotation */}
+      {Object.values(drugs).some(v => v && parseFloat(v) > 0) && (
+        <div className="card">
+          <h3>📍 注射部位</h3>
+          {(() => {
+            const siteInfo = getNextInjectionSite(data, selectedDate);
+            return (
+              <>
+                {siteInfo.suggestion && !injectionSite && (
+                  <div style={{fontSize:'0.78em',color:'var(--green)',marginBottom:8}}>
+                    💡 建議注射：{INJECTION_SITES.find(s => s.key === siteInfo.suggestion)?.label || ''}（輪替順序）
+                  </div>
+                )}
+                <div className="site-grid">
+                  {INJECTION_SITES.map(site => {
+                    const isActive = injectionSite === site.key;
+                    const recent = siteInfo.history.find(h => h.site === site.key);
+                    const daysSince = recent ? Math.round((parseDate(selectedDate) - parseDate(recent.date)) / 86400000) : null;
+                    return (
+                      <button key={site.key} className={`site-btn ${isActive ? 'active' : ''} ${recent ? 'recent' : ''}`}
+                        onClick={() => setInjectionSite(isActive ? '' : site.key)}>
+                        {site.short}
+                        {daysSince !== null && daysSince <= 7 && <span className="site-days">{daysSince}天前</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+                {siteInfo.history.length > 0 && (
+                  <div style={{fontSize:'0.7em',color:'var(--text2)',marginTop:6}}>
+                    最近：{siteInfo.history.slice(-4).map(h => `${h.date.slice(5)} ${INJECTION_SITES.find(s=>s.key===h.site)?.short||''}`).join(' → ')}
+                  </div>
+                )}
+              </>
+            );
+          })()}
+        </div>
+      )}
 
       <div className="card">
         <h3>📋 症狀紀錄</h3>
@@ -2376,7 +2622,24 @@ function SmartPage({ data, updateData, selectedDate }) {
     try { return JSON.parse(localStorage.getItem('blood_work') || '[]'); } catch { return []; }
   });
   const [showBloodForm, setShowBloodForm] = useState(false);
-  const [bloodForm, setBloodForm] = useState({ date: today(), totalT: '', freeT: '', e2: '', shbg: '', hct: '', psa: '', prolactin: '', note: '' });
+  const [bloodForm, setBloodForm] = useState(() => {
+    const f = { date: today(), note: '' };
+    BLOOD_MARKERS.forEach(m => { f[m.key] = ''; });
+    return f;
+  });
+
+  // Inventory state
+  const [inventory, setInventory] = useState(loadInventory);
+  const [showInventory, setShowInventory] = useState(false);
+
+  // Protocol state
+  const [protocols, setProtocols] = useState(loadProtocols);
+  const [showProtocolForm, setShowProtocolForm] = useState(false);
+  const [protocolForm, setProtocolForm] = useState({ name: '', startDate: today(), endDate: '', drugs: {}, notes: '' });
+
+  // Dose calculator state
+  const [calcMg, setCalcMg] = useState('');
+  const [calcConc, setCalcConc] = useState('250');
 
   const saveBloodWork = (bw) => {
     setBloodWork(bw);
@@ -2485,8 +2748,13 @@ function SmartPage({ data, updateData, selectedDate }) {
     const updated = [...bloodWork.filter(b => b.date !== entry.date), entry].sort((a,b) => a.date.localeCompare(b.date));
     saveBloodWork(updated);
     setShowBloodForm(false);
-    setBloodForm({ date: today(), totalT: '', freeT: '', e2: '', shbg: '', hct: '', psa: '', prolactin: '', note: '' });
+    const f = { date: today(), note: '' };
+    BLOOD_MARKERS.forEach(m => { f[m.key] = ''; });
+    setBloodForm(f);
   };
+
+  const saveInv = (inv) => { setInventory(inv); saveInventory(inv); };
+  const saveProts = (p) => { setProtocols(p); saveProtocols(p); };
 
   return (
     <div className="page">
@@ -2550,7 +2818,88 @@ function SmartPage({ data, updateData, selectedDate }) {
         </div>
       )}
 
-      {/* Blood Work */}
+      {/* Dose Calculator */}
+      <div className="card">
+        <h3>🧮 劑量計算機</h3>
+        <p style={{fontSize:'0.78em',color:'var(--text2)',marginBottom:8}}>mg ↔ mL 換算（輸入需要的 mg 和藥物濃度）</p>
+        <div className="calc-row">
+          <input className="calc-input" type="number" inputMode="decimal" placeholder="需要 mg"
+            value={calcMg} onChange={e => setCalcMg(e.target.value)} />
+          <span style={{color:'var(--text2)',fontSize:'0.85em'}}>mg ÷</span>
+          <input className="calc-input" type="number" inputMode="decimal" placeholder="濃度 mg/mL"
+            value={calcConc} onChange={e => setCalcConc(e.target.value)} />
+          <span style={{color:'var(--text2)',fontSize:'0.85em'}}>mg/mL</span>
+        </div>
+        {calcMg && calcConc && parseFloat(calcConc) > 0 && (
+          <div className="calc-result">
+            = {(parseFloat(calcMg) / parseFloat(calcConc)).toFixed(2)} mL
+            <span style={{fontSize:'0.6em',color:'var(--text2)',display:'block',marginTop:2}}>
+              ({parseFloat(calcMg)}mg ÷ {parseFloat(calcConc)}mg/mL)
+            </span>
+          </div>
+        )}
+        <div style={{display:'flex',gap:4,flexWrap:'wrap',marginTop:8}}>
+          {[100, 200, 250, 300].map(c => (
+            <button key={c} onClick={() => setCalcConc(String(c))}
+              style={{background: calcConc === String(c) ? 'var(--blue)' : 'var(--card2)',border:'1px solid var(--border)',borderRadius:12,padding:'4px 10px',color: calcConc === String(c) ? '#fff' : 'var(--text2)',fontSize:'0.72em',cursor:'pointer'}}>
+              {c} mg/mL
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Vial Inventory */}
+      <div className="card">
+        <h3>📦 藥品庫存</h3>
+        <button className="action-btn" style={{marginBottom:10}} onClick={() => setShowInventory(!showInventory)}>
+          {showInventory ? '收起庫存管理' : '管理藥品庫存'}
+        </button>
+        {/* Quick alerts for low stock */}
+        {DRUGS.filter(d => {
+          const r = calcVialRemaining(d.key, inventory, data);
+          return r && (r.isLow || r.isEmpty);
+        }).map(d => {
+          const r = calcVialRemaining(d.key, inventory, data);
+          return (
+            <div key={d.key} style={{background: r.isEmpty ? 'rgba(239,68,68,0.15)' : 'rgba(251,146,60,0.15)',border:`1px solid ${r.isEmpty ? 'var(--red)' : 'var(--orange)'}`,borderRadius:8,padding:'6px 10px',marginBottom:6,fontSize:'0.78em'}}>
+              {r.isEmpty ? '🚨' : '⚠️'} {d.label}：剩餘 {r.remaining.toFixed(1)} {d.unit}
+              {r.daysLeft !== null && ` — 預估還能用 ${r.daysLeft} 天`}
+            </div>
+          );
+        })}
+        {showInventory && (
+          <div>
+            {DRUGS.filter(d => d.conc || Object.values(data).some(e => (e.drugs?.[d.key]||0) > 0)).map(d => {
+              const inv = inventory[d.key] || {};
+              const remaining = calcVialRemaining(d.key, inventory, data);
+              return (
+                <div key={d.key} style={{marginBottom:10,padding:8,background:'var(--card2)',borderRadius:8}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
+                    <span style={{color: d.color,fontSize:'0.85em',fontWeight:600}}>{d.label}</span>
+                    {remaining && <span style={{fontSize:'0.72em',color: remaining.isLow ? 'var(--orange)' : 'var(--green)'}}>
+                      剩 {remaining.remaining.toFixed(1)} {d.unit} {remaining.daysLeft ? `(~${remaining.daysLeft}天)` : ''}
+                    </span>}
+                  </div>
+                  <div style={{display:'flex',gap:6,alignItems:'center'}}>
+                    <input className="drug-input" type="number" step="any" placeholder={`總量 (${d.unit})`}
+                      value={inv.totalAmount || ''} style={{flex:1,fontSize:'0.82em',padding:'6px 8px'}}
+                      onChange={e => saveInv({...inventory, [d.key]: {...inv, totalAmount: parseFloat(e.target.value) || 0}})} />
+                    <input type="date" value={inv.openDate || ''} style={{background:'var(--card2)',border:'1px solid var(--border)',borderRadius:6,padding:'6px',color:'var(--text)',fontSize:'0.75em'}}
+                      onChange={e => saveInv({...inventory, [d.key]: {...inv, openDate: e.target.value}})} />
+                  </div>
+                  {remaining && remaining.totalAmount > 0 && (
+                    <div className="inv-bar">
+                      <div className="inv-fill" style={{width:`${Math.max(0,Math.min(100, remaining.remaining / remaining.totalAmount * 100))}%`,background: remaining.isLow ? 'var(--orange)' : 'var(--green)'}} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Blood Work with Alert Thresholds */}
       <div className="card">
         <h3>🩸 血液報告</h3>
         <button className="action-btn" style={{marginBottom:10}} onClick={() => setShowBloodForm(!showBloodForm)}>
@@ -2558,41 +2907,33 @@ function SmartPage({ data, updateData, selectedDate }) {
         </button>
         {showBloodForm && (
           <div style={{marginBottom:12}}>
-            <div className="blood-grid">
-              <div className="blood-field">
-                <label>日期</label>
-                <input type="date" value={bloodForm.date} onChange={e => setBloodForm(f => ({...f, date: e.target.value}))} />
-              </div>
-              <div className="blood-field">
-                <label>Total T (ng/dL)</label>
-                <input type="number" inputMode="decimal" placeholder="例: 800" value={bloodForm.totalT} onChange={e => setBloodForm(f => ({...f, totalT: e.target.value}))} />
-              </div>
-              <div className="blood-field">
-                <label>Free T (pg/mL)</label>
-                <input type="number" inputMode="decimal" placeholder="例: 15" value={bloodForm.freeT} onChange={e => setBloodForm(f => ({...f, freeT: e.target.value}))} />
-              </div>
-              <div className="blood-field">
-                <label>E2 (pg/mL)</label>
-                <input type="number" inputMode="decimal" placeholder="例: 30" value={bloodForm.e2} onChange={e => setBloodForm(f => ({...f, e2: e.target.value}))} />
-              </div>
-              <div className="blood-field">
-                <label>SHBG (nmol/L)</label>
-                <input type="number" inputMode="decimal" placeholder="例: 35" value={bloodForm.shbg} onChange={e => setBloodForm(f => ({...f, shbg: e.target.value}))} />
-              </div>
-              <div className="blood-field">
-                <label>HCT (%)</label>
-                <input type="number" inputMode="decimal" placeholder="例: 47" value={bloodForm.hct} onChange={e => setBloodForm(f => ({...f, hct: e.target.value}))} />
-              </div>
-              <div className="blood-field">
-                <label>PSA (ng/mL)</label>
-                <input type="number" inputMode="decimal" placeholder="例: 0.8" value={bloodForm.psa} onChange={e => setBloodForm(f => ({...f, psa: e.target.value}))} />
-              </div>
-              <div className="blood-field">
-                <label>泌乳素 (ng/mL)</label>
-                <input type="number" inputMode="decimal" placeholder="例: 10" value={bloodForm.prolactin} onChange={e => setBloodForm(f => ({...f, prolactin: e.target.value}))} />
-              </div>
+            <div className="blood-field" style={{marginBottom:8}}>
+              <label style={{fontSize:'0.78em',color:'var(--text2)'}}>日期</label>
+              <input type="date" value={bloodForm.date} onChange={e => setBloodForm(f => ({...f, date: e.target.value}))}
+                style={{background:'var(--card2)',border:'1px solid var(--border)',borderRadius:6,padding:'8px',color:'var(--text)',fontSize:'0.9em'}} />
             </div>
-            <textarea className="note-input" style={{marginTop:8,minHeight:40}} placeholder="備註（用藥狀態、是否空腹等）"
+            {BLOOD_MARKERS.map(m => {
+              const status = getMarkerStatus(m, bloodForm[m.key]);
+              return (
+                <div className="marker-row" key={m.key}>
+                  <div className="marker-label">
+                    <span style={{color: m.color}}>{m.label}</span>
+                    <div className="marker-range">{m.low}-{m.high} {m.unit}</div>
+                  </div>
+                  <div className="marker-value">
+                    <input type="number" inputMode="decimal" placeholder={m.unit}
+                      value={bloodForm[m.key] || ''}
+                      onChange={e => setBloodForm(f => ({...f, [m.key]: e.target.value}))} />
+                  </div>
+                  {status && (
+                    <span className="marker-status" style={{background: `${status.color}22`, color: status.color}}>
+                      {status.label}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+            <textarea className="note-input" style={{marginTop:8,minHeight:40}} placeholder="備註（用藥狀態、空腹、時間等）"
               value={bloodForm.note} onChange={e => setBloodForm(f => ({...f, note: e.target.value}))} />
             <button className="save-btn" style={{marginTop:8}} onClick={addBloodWork}>儲存血液報告</button>
           </div>
@@ -2602,39 +2943,99 @@ function SmartPage({ data, updateData, selectedDate }) {
           <div>
             {bloodWork.slice().reverse().map((bw, i) => {
               const pkLevel = calcPKLevels(data, 30).find(l => l.date === bw.date);
+              const alerts = BLOOD_MARKERS.filter(m => {
+                const s = getMarkerStatus(m, bw[m.key]);
+                return s && (s.status === 'critical_high' || s.status === 'critical_low');
+              });
               return (
-                <div key={i} style={{background:'var(--card2)',borderRadius:8,padding:10,marginBottom:8}}>
+                <div key={i} style={{background:'var(--card2)',borderRadius:8,padding:10,marginBottom:8,borderLeft: alerts.length ? '3px solid var(--red)' : '3px solid var(--green)'}}>
                   <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
                     <b style={{color:'var(--blue)',fontSize:'0.9em'}}>{bw.date}</b>
                     <button style={{background:'none',border:'none',color:'var(--red)',fontSize:'0.8em',cursor:'pointer'}}
                       onClick={() => saveBloodWork(bloodWork.filter(b => b.date !== bw.date))}>刪除</button>
                   </div>
-                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:4,fontSize:'0.8em'}}>
-                    {bw.totalT && <div>Total T: <b style={{color: bw.totalT > 1000 ? 'var(--orange)' : bw.totalT < 300 ? 'var(--red)' : 'var(--green)'}}>{bw.totalT}</b></div>}
-                    {bw.freeT && <div>Free T: <b>{bw.freeT}</b></div>}
-                    {bw.e2 && <div>E2: <b style={{color: bw.e2 > 50 ? 'var(--red)' : bw.e2 < 15 ? 'var(--orange)' : 'var(--green)'}}>{bw.e2}</b></div>}
-                    {bw.shbg && <div>SHBG: <b>{bw.shbg}</b></div>}
-                    {bw.hct && <div>HCT: <b style={{color: bw.hct > 52 ? 'var(--red)' : 'var(--green)'}}>{bw.hct}%</b></div>}
-                    {bw.psa && <div>PSA: <b>{bw.psa}</b></div>}
-                    {bw.prolactin && <div>泌乳素: <b>{bw.prolactin}</b></div>}
+                  {alerts.length > 0 && (
+                    <div style={{background:'rgba(239,68,68,0.15)',borderRadius:6,padding:6,marginBottom:6,fontSize:'0.75em',color:'var(--red)'}}>
+                      ⚠️ 異常項目：{alerts.map(m => `${m.label} ${bw[m.key]}${m.unit}`).join('、')}
+                    </div>
+                  )}
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:3,fontSize:'0.78em'}}>
+                    {BLOOD_MARKERS.filter(m => bw[m.key]).map(m => {
+                      const s = getMarkerStatus(m, bw[m.key]);
+                      return (
+                        <div key={m.key} style={{display:'flex',justifyContent:'space-between',padding:'2px 0'}}>
+                          <span style={{color:'var(--text2)'}}>{m.label}</span>
+                          <span style={{color: s?.color || 'var(--text)', fontWeight: s?.status?.includes('critical') ? 700 : 400}}>
+                            {bw[m.key]} {m.unit}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                   {pkLevel && pkLevel.totalT > 0 && (
-                    <div style={{fontSize:'0.75em',color:'var(--purple)',marginTop:4}}>
+                    <div style={{fontSize:'0.72em',color:'var(--purple)',marginTop:4}}>
                       💉 抽血當日預估活性 T: {pkLevel.totalT}mg | E2 指數: {pkLevel.e2.toFixed(1)}
                     </div>
                   )}
-                  {bw.e2 && pkLevel?.e2 > 0 && (
-                    <div style={{fontSize:'0.75em',color:'var(--text2)',marginTop:2}}>
-                      📊 你的 E2 實際值 {bw.e2} vs AI 預估指數 {pkLevel.e2.toFixed(1)} — {bw.e2 > 40 ? '偏高，可能需要控制' : bw.e2 < 15 ? '偏低，關節可能乾' : '在舒適區'}
-                    </div>
-                  )}
-                  {bw.note && <div style={{fontSize:'0.75em',color:'var(--text2)',marginTop:2}}>📝 {bw.note}</div>}
+                  {bw.note && <div style={{fontSize:'0.72em',color:'var(--text2)',marginTop:2}}>📝 {bw.note}</div>}
                 </div>
               );
             })}
           </div>
         ) : (
-          <p style={{color:'var(--text2)',fontSize:'0.85em'}}>尚無血液報告。定期抽血可以驗證 AI 預估的準確度。</p>
+          <p style={{color:'var(--text2)',fontSize:'0.85em'}}>尚無血液報告。定期抽血追蹤 HCT、PSA、肝指數等安全指標。</p>
+        )}
+      </div>
+
+      {/* Cycle/Protocol Management */}
+      <div className="card">
+        <h3>📋 Cycle / 療程管理</h3>
+        <button className="action-btn" style={{marginBottom:10}} onClick={() => setShowProtocolForm(!showProtocolForm)}>
+          {showProtocolForm ? '收起' : '+ 新增療程'}
+        </button>
+        {showProtocolForm && (
+          <div style={{marginBottom:12}}>
+            <input className="drug-input" placeholder="療程名稱（例：TRT Cruise、Blast Week 1-12）" style={{marginBottom:8}}
+              value={protocolForm.name} onChange={e => setProtocolForm(f => ({...f, name: e.target.value}))} />
+            <div style={{display:'flex',gap:8,marginBottom:8}}>
+              <input type="date" value={protocolForm.startDate} onChange={e => setProtocolForm(f => ({...f, startDate: e.target.value}))}
+                style={{flex:1,background:'var(--card2)',border:'1px solid var(--border)',borderRadius:8,padding:'8px',color:'var(--text)',fontSize:'0.85em'}} />
+              <span style={{alignSelf:'center',color:'var(--text2)'}}>→</span>
+              <input type="date" value={protocolForm.endDate} onChange={e => setProtocolForm(f => ({...f, endDate: e.target.value}))}
+                style={{flex:1,background:'var(--card2)',border:'1px solid var(--border)',borderRadius:8,padding:'8px',color:'var(--text)',fontSize:'0.85em'}} placeholder="結束日" />
+            </div>
+            <textarea className="note-input" style={{minHeight:40,marginBottom:8}} placeholder="用藥內容、備註"
+              value={protocolForm.notes} onChange={e => setProtocolForm(f => ({...f, notes: e.target.value}))} />
+            <button className="save-btn" onClick={() => {
+              if (!protocolForm.name) return;
+              const updated = [...protocols, { ...protocolForm, id: Date.now() }];
+              saveProts(updated);
+              setShowProtocolForm(false);
+              setProtocolForm({ name: '', startDate: today(), endDate: '', drugs: {}, notes: '' });
+            }}>儲存療程</button>
+          </div>
+        )}
+        {protocols.length > 0 ? (
+          protocols.slice().reverse().map(p => {
+            const isActive = p.startDate <= selectedDate && (!p.endDate || p.endDate >= selectedDate);
+            const dayCount = p.startDate ? Math.round((parseDate(selectedDate) - parseDate(p.startDate)) / 86400000) : 0;
+            return (
+              <div key={p.id} className={`protocol-card ${isActive ? 'protocol-active' : ''}`}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  <div>
+                    <b style={{color: isActive ? 'var(--green)' : 'var(--text2)',fontSize:'0.9em'}}>{p.name}</b>
+                    {isActive && <span style={{fontSize:'0.7em',color:'var(--green)',marginLeft:6}}>進行中 Day {dayCount}</span>}
+                  </div>
+                  <button style={{background:'none',border:'none',color:'var(--red)',fontSize:'0.75em',cursor:'pointer'}}
+                    onClick={() => saveProts(protocols.filter(x => x.id !== p.id))}>刪除</button>
+                </div>
+                <div style={{fontSize:'0.78em',color:'var(--text2)',marginTop:2}}>{p.startDate} → {p.endDate || '持續中'}</div>
+                {p.notes && <div style={{fontSize:'0.75em',color:'var(--text2)',marginTop:2}}>{p.notes}</div>}
+              </div>
+            );
+          })
+        ) : (
+          <p style={{color:'var(--text2)',fontSize:'0.85em'}}>記錄你的 Cycle 或 TRT 療程，方便追蹤每個階段的變化。</p>
         )}
       </div>
 
@@ -3111,7 +3512,7 @@ function MorePage({ data, updateData }) {
       <AutoSleepImport data={data} updateData={updateData} />
 
       <div className="card" style={{fontSize:'0.78em',color:'var(--text2)'}}>
-        用藥追蹤 App v6.0<br/>
+        用藥追蹤 App v7.0<br/>
         本工具僅供個人紀錄用途，不構成醫療建議。
       </div>
     </div>
