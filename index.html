@@ -2685,9 +2685,11 @@ function ChartPage({ data, setTab }) {
   const chartRef1 = useRef(null);
   const chartRef2 = useRef(null);
   const chartRef3 = useRef(null);
+  const checkinChartRef = useRef(null);
   const chart1 = useRef(null);
   const chart2 = useRef(null);
   const chart3 = useRef(null);
+  const checkinChart = useRef(null);
 
   const sortedDates = useMemo(() => Object.keys(data).sort(), [data]);
 
@@ -2831,10 +2833,60 @@ function ChartPage({ data, setTab }) {
       });
     }
 
+    // Check-in scores chart (morningScores + eveningScores trend)
+    const checkinDates = sortedDates.filter(d => data[d]?.morningScores && Object.keys(data[d].morningScores).length > 0 || data[d]?.eveningScores && Object.keys(data[d].eveningScores).length > 0);
+    if (checkinDates.length >= 2 && checkinChartRef.current) {
+      if (checkinChart.current) checkinChart.current.destroy();
+      const checkinDatasets = [];
+      // Morning items
+      const mColors = ['#f472b6','#fbbf24','#60a5fa','#a78bfa','#fb923c'];
+      MORNING_CHECKIN.forEach((item, idx) => {
+        const hasData = checkinDates.some(d => data[d]?.morningScores?.[item.key] !== undefined);
+        if (!hasData) return;
+        checkinDatasets.push({
+          label: '🌅' + item.label,
+          data: checkinDates.map(d => data[d]?.morningScores?.[item.key] ?? null),
+          borderColor: mColors[idx % mColors.length],
+          backgroundColor: mColors[idx % mColors.length] + '22',
+          tension: 0.3, pointRadius: 3, borderWidth: 2, spanGaps: true
+        });
+      });
+      // Evening items
+      const eColors = ['#34d399','#818cf8','#e879f9','#22d3ee','#ef4444'];
+      EVENING_CHECKIN.forEach((item, idx) => {
+        const hasData = checkinDates.some(d => data[d]?.eveningScores?.[item.key] !== undefined);
+        if (!hasData) return;
+        checkinDatasets.push({
+          label: '🌙' + item.label,
+          data: checkinDates.map(d => data[d]?.eveningScores?.[item.key] ?? null),
+          borderColor: eColors[idx % eColors.length],
+          backgroundColor: eColors[idx % eColors.length] + '22',
+          borderDash: [4,4],
+          tension: 0.3, pointRadius: 3, borderWidth: 2, spanGaps: true
+        });
+      });
+      if (checkinDatasets.length > 0) {
+        checkinChart.current = new Chart(checkinChartRef.current, {
+          type: 'line',
+          data: { labels: checkinDates.map(d => d.slice(5)), datasets: checkinDatasets },
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { labels: { color: '#ccc', font: { size: 9 } } } },
+            scales: {
+              x: { ticks: { color: '#888', maxTicksLimit: 10 }, grid: { color: '#222' } },
+              y: { min: 0, max: 5, ticks: { color: '#888', stepSize: 1 }, grid: { color: '#222' } }
+            },
+            interaction: { mode: 'index', intersect: false }
+          }
+        });
+      }
+    }
+
     return () => {
       if (chart1.current) chart1.current.destroy();
       if (chart2.current) chart2.current.destroy();
       if (chart3.current) chart3.current.destroy();
+      if (checkinChart.current) checkinChart.current.destroy();
     };
   }, [data, sortedDates]);
 
@@ -2889,8 +2941,20 @@ function ChartPage({ data, setTab }) {
     <div className="page">
       <div className="card">
         <h3>📊 每週藥物劑量趨勢</h3>
-        {totalDays < 3 ? <p style={{color:'var(--text2)',fontSize:'0.9em'}}>需要至少 3 天資料才能顯示圖表</p> :
+        {totalDays < 1 ? <p style={{color:'var(--text2)',fontSize:'0.9em'}}>儲存第一天紀錄後即可顯示圖表</p> :
         <div className="chart-container"><canvas ref={chartRef1}></canvas></div>}
+      </div>
+
+      {/* Daily Check-in Scores Trend */}
+      <div className="card">
+        <h3>📈 每日 Check-in 趨勢</h3>
+        {(() => {
+          const checkinDates = sortedDates.filter(d => (data[d]?.morningScores && Object.keys(data[d].morningScores).length > 0) || (data[d]?.eveningScores && Object.keys(data[d].eveningScores).length > 0));
+          return checkinDates.length < 2
+            ? <p style={{color:'var(--text2)',fontSize:'0.9em'}}>需要至少 2 天 Check-in 資料才能顯示趨勢（起床/晚間Check-in）</p>
+            : <div className="chart-container" style={{height:300}}><canvas ref={checkinChartRef}></canvas></div>;
+        })()}
+        <p style={{fontSize:'0.7em',color:'var(--text2)',marginTop:6}}>實線 = 🌅起床指標，虛線 = 🌙晚間指標（0-5分）</p>
       </div>
 
       <div className="card">
