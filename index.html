@@ -237,60 +237,60 @@ const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
 const DRUGS = [
   // === Testosterone Esters ===
-  { key: 'sus', label: 'Sustanon', unit: 'ml', color: '#60a5fa', cat: 'testosterone', conc: 250,
+  { key: 'sus', label: 'Sustanon', unit: 'ml', color: '#7a94b0', cat: 'testosterone', conc: 250,
     pk: { esters: [{mg:30,halfLife:0.8},{mg:60,halfLife:1.5},{mg:60,halfLife:4},{mg:100,halfLife:7.5}], perUnit: 250, aromatize: 0.05 }},
-  { key: 'cyp', label: 'Test Cypionate', unit: 'mg', color: '#a78bfa', cat: 'testosterone', conc: 250,
+  { key: 'cyp', label: 'Test Cypionate', unit: 'mg', color: '#8b7fa8', cat: 'testosterone', conc: 250,
     pk: { halfLife: 8, perUnit: 1, aromatize: 0.05 }},
-  { key: 'enth', label: 'Test Enanthate', unit: 'mg', color: '#818cf8', cat: 'testosterone', conc: 250,
+  { key: 'enth', label: 'Test Enanthate', unit: 'mg', color: '#7882a8', cat: 'testosterone', conc: 250,
     pk: { halfLife: 7, perUnit: 1, aromatize: 0.05 }},
-  { key: 'prop', label: 'Test Propionate', unit: 'mg', color: '#93c5fd', cat: 'testosterone', conc: 100,
+  { key: 'prop', label: 'Test Propionate', unit: 'mg', color: '#94afc4', cat: 'testosterone', conc: 100,
     pk: { halfLife: 0.8, perUnit: 1, aromatize: 0.05 }},
-  { key: 'undc', label: 'Test Undecanoate', unit: 'mg', color: '#6366f1', cat: 'testosterone', conc: 250,
+  { key: 'undc', label: 'Test Undecanoate', unit: 'mg', color: '#6b6fa0', cat: 'testosterone', conc: 250,
     pk: { halfLife: 21, perUnit: 1, aromatize: 0.04 }},
   // === DHT Derivatives (non-aromatizing) ===
-  { key: 'mast_p', label: 'Masteron Prop', unit: 'mg', color: '#f472b6', cat: 'dht', conc: 100,
+  { key: 'mast_p', label: 'Masteron Prop', unit: 'mg', color: '#c4856a', cat: 'dht', conc: 100,
     pk: { halfLife: 2.5, perUnit: 1, aromatize: 0 }},
-  { key: 'mast_e', label: 'Masteron Enanth', unit: 'mg', color: '#ec4899', cat: 'dht', conc: 200,
+  { key: 'mast_e', label: 'Masteron Enanth', unit: 'mg', color: '#b87a68', cat: 'dht', conc: 200,
     pk: { halfLife: 7, perUnit: 1, aromatize: 0 }},
-  { key: 'primo', label: 'Primobolan', unit: 'mg', color: '#34d399', cat: 'dht', conc: 100,
+  { key: 'primo', label: 'Primobolan', unit: 'mg', color: '#7a9e8e', cat: 'dht', conc: 100,
     pk: { halfLife: 5, perUnit: 1, aromatize: 0 }},
-  { key: 'winny', label: 'Winstrol', unit: 'mg', color: '#2dd4bf', cat: 'dht', conc: 50,
+  { key: 'winny', label: 'Winstrol', unit: 'mg', color: '#6b9a8f', cat: 'dht', conc: 50,
     pk: { halfLife: 1, perUnit: 1, aromatize: 0 }},
-  { key: 'var', label: 'Anavar', unit: 'mg', color: '#5eead4', cat: 'dht', conc: null,
+  { key: 'var', label: 'Anavar', unit: 'mg', color: '#89b0a3', cat: 'dht', conc: null,
     pk: { halfLife: 0.4, perUnit: 1, aromatize: 0 }},
-  { key: 'prov', label: 'Proviron', unit: 'mg', color: '#99f6e4', cat: 'dht', conc: null,
+  { key: 'prov', label: 'Proviron', unit: 'mg', color: '#a3c4b8', cat: 'dht', conc: null,
     pk: { halfLife: 0.5, perUnit: 1, aromatize: 0 }},
   // === 19-nor compounds ===
-  { key: 'deca', label: 'Deca (NPP長酯)', unit: 'mg', color: '#fbbf24', cat: '19nor', conc: 250,
+  { key: 'deca', label: 'Deca (NPP長酯)', unit: 'mg', color: '#c4956a', cat: '19nor', conc: 250,
     pk: { halfLife: 15, perUnit: 1, aromatize: 0.02 }},
-  { key: 'npp', label: 'NPP (短酯)', unit: 'mg', color: '#f59e0b', cat: '19nor', conc: 100,
+  { key: 'npp', label: 'NPP (短酯)', unit: 'mg', color: '#b58a5e', cat: '19nor', conc: 100,
     pk: { halfLife: 2.5, perUnit: 1, aromatize: 0.02 }},
-  { key: 'tren_a', label: 'Trenbolone Ace', unit: 'mg', color: '#ef4444', cat: '19nor', conc: 100,
+  { key: 'tren_a', label: 'Trenbolone Ace', unit: 'mg', color: '#b85c5c', cat: '19nor', conc: 100,
     pk: { halfLife: 1, perUnit: 1, aromatize: 0 }},
-  { key: 'tren_e', label: 'Trenbolone Enanth', unit: 'mg', color: '#dc2626', cat: '19nor', conc: 200,
+  { key: 'tren_e', label: 'Trenbolone Enanth', unit: 'mg', color: '#a05050', cat: '19nor', conc: 200,
     pk: { halfLife: 7, perUnit: 1, aromatize: 0 }},
   // === Peptides & Ancillaries ===
-  { key: 'hcg', label: 'HCG', unit: 'IU', color: '#c084fc', cat: 'ancillary', conc: null,
+  { key: 'hcg', label: 'HCG', unit: 'IU', color: '#9b8bb8', cat: 'ancillary', conc: null,
     pk: { halfLife: 1.5, perUnit: 0.001, aromatize: 0.02 }},
-  { key: 'hgh', label: 'HGH', unit: 'IU', color: '#d946ef', cat: 'peptide', conc: null,
+  { key: 'hgh', label: 'HGH', unit: 'IU', color: '#a87ab0', cat: 'peptide', conc: null,
     pk: { halfLife: 0.15, perUnit: 1, aromatize: 0 }},
-  { key: 'bpc', label: 'BPC-157', unit: 'mcg', color: '#e879f9', cat: 'peptide', conc: null,
+  { key: 'bpc', label: 'BPC-157', unit: 'mcg', color: '#b48dba', cat: 'peptide', conc: null,
     pk: null },
-  { key: 'ghk_cu', label: 'GHK-Cu', unit: 'mcg', color: '#c084fc', cat: 'peptide', conc: null,
+  { key: 'ghk_cu', label: 'GHK-Cu', unit: 'mcg', color: '#9b8bb8', cat: 'peptide', conc: null,
     pk: null },
-  { key: 'cjc_ipam', label: 'CJC+IPAM', unit: 'mcg', color: '#a78bfa', cat: 'peptide', conc: null,
+  { key: 'cjc_ipam', label: 'CJC+IPAM', unit: 'mcg', color: '#8b7fa8', cat: 'peptide', conc: null,
     pk: null },
   // === AI & Ancillaries ===
-  { key: 'ai', label: 'Aromasin', unit: '片', color: '#fb923c', cat: 'ai', conc: null,
+  { key: 'ai', label: 'Aromasin', unit: '片', color: '#c4956a', cat: 'ai', conc: null,
     pk: null },
-  { key: 'adex', label: 'Arimidex', unit: 'mg', color: '#fdba74', cat: 'ai', conc: null,
+  { key: 'adex', label: 'Arimidex', unit: 'mg', color: '#d4a882', cat: 'ai', conc: null,
     pk: null },
-  { key: 'nolva', label: 'Nolvadex', unit: 'mg', color: '#fed7aa', cat: 'serm', conc: null,
+  { key: 'nolva', label: 'Nolvadex', unit: 'mg', color: '#dfc4a0', cat: 'serm', conc: null,
     pk: null },
-  { key: 'clomid', label: 'Clomid', unit: 'mg', color: '#fde68a', cat: 'serm', conc: null,
+  { key: 'clomid', label: 'Clomid', unit: 'mg', color: '#d4c48a', cat: 'serm', conc: null,
     pk: null },
   // === Other ===
-  { key: 'cere', label: 'Cerebrolysin', unit: 'mg', color: '#22d3ee', cat: 'other', conc: null,
+  { key: 'cere', label: 'Cerebrolysin', unit: 'mg', color: '#6b9aaa', cat: 'other', conc: null,
     pk: null },
 ];
 
@@ -359,35 +359,35 @@ const calcVialRemaining = (drugKey, inventory, data) => {
 
 // === Blood Work Reference Ranges & Alerts ===
 const BLOOD_MARKERS = [
-  { key: 'total_t', label: 'Total T', unit: 'ng/dL', low: 300, high: 1000, critical_low: 200, critical_high: 1500, color: '#60a5fa' },
-  { key: 'free_t', label: 'Free T', unit: 'pg/mL', low: 8.7, high: 25, critical_low: 5, critical_high: 50, color: '#818cf8' },
-  { key: 'e2', label: 'Estradiol (E2)', unit: 'pg/mL', low: 15, high: 45, critical_low: 5, critical_high: 80, color: '#f472b6' },
-  { key: 'shbg', label: 'SHBG', unit: 'nmol/L', low: 16, high: 55, critical_low: 10, critical_high: 80, color: '#a78bfa' },
-  { key: 'hematocrit', label: '紅血球容積比 (HCT)', unit: '%', low: 38, high: 52, critical_low: 35, critical_high: 54, color: '#ef4444' },
-  { key: 'hemoglobin', label: '血紅素 (Hb)', unit: 'g/dL', low: 13.5, high: 17.5, critical_low: 12, critical_high: 19, color: '#dc2626' },
-  { key: 'psa', label: 'PSA', unit: 'ng/mL', low: 0, high: 4.0, critical_low: 0, critical_high: 4.0, color: '#fb923c' },
-  { key: 'alt', label: 'ALT (肝指數)', unit: 'U/L', low: 7, high: 56, critical_low: 0, critical_high: 100, color: '#fbbf24' },
-  { key: 'ast', label: 'AST', unit: 'U/L', low: 10, high: 40, critical_low: 0, critical_high: 80, color: '#f59e0b' },
-  { key: 'creatinine', label: '肌酐酸', unit: 'mg/dL', low: 0.7, high: 1.3, critical_low: 0.5, critical_high: 2.0, color: '#34d399' },
-  { key: 'ldl', label: 'LDL膽固醇', unit: 'mg/dL', low: 0, high: 130, critical_low: 0, critical_high: 160, color: '#fb923c' },
-  { key: 'hdl', label: 'HDL膽固醇', unit: 'mg/dL', low: 40, high: 100, critical_low: 30, critical_high: 200, color: '#34d399' },
-  { key: 'prolactin', label: '泌乳素', unit: 'ng/mL', low: 2, high: 18, critical_low: 0, critical_high: 30, color: '#d946ef' },
-  { key: 'dht', label: 'DHT', unit: 'pg/mL', low: 300, high: 850, critical_low: 200, critical_high: 1200, color: '#c084fc' },
-  { key: 'igf1', label: 'IGF-1', unit: 'ng/mL', low: 100, high: 350, critical_low: 50, critical_high: 500, color: '#22d3ee' },
-  { key: 'tsh', label: 'TSH', unit: 'mIU/L', low: 0.4, high: 4.0, critical_low: 0.1, critical_high: 10, color: '#e879f9' },
-  { key: 'bp_sys', label: '收縮壓', unit: 'mmHg', low: 90, high: 130, critical_low: 80, critical_high: 140, color: '#ef4444' },
-  { key: 'bp_dia', label: '舒張壓', unit: 'mmHg', low: 60, high: 85, critical_low: 50, critical_high: 90, color: '#dc2626' },
+  { key: 'total_t', label: 'Total T', unit: 'ng/dL', low: 300, high: 1000, critical_low: 200, critical_high: 1500, color: '#7a94b0' },
+  { key: 'free_t', label: 'Free T', unit: 'pg/mL', low: 8.7, high: 25, critical_low: 5, critical_high: 50, color: '#7882a8' },
+  { key: 'e2', label: 'Estradiol (E2)', unit: 'pg/mL', low: 15, high: 45, critical_low: 5, critical_high: 80, color: '#c4856a' },
+  { key: 'shbg', label: 'SHBG', unit: 'nmol/L', low: 16, high: 55, critical_low: 10, critical_high: 80, color: '#8b7fa8' },
+  { key: 'hematocrit', label: '紅血球容積比 (HCT)', unit: '%', low: 38, high: 52, critical_low: 35, critical_high: 54, color: '#b85c5c' },
+  { key: 'hemoglobin', label: '血紅素 (Hb)', unit: 'g/dL', low: 13.5, high: 17.5, critical_low: 12, critical_high: 19, color: '#a05050' },
+  { key: 'psa', label: 'PSA', unit: 'ng/mL', low: 0, high: 4.0, critical_low: 0, critical_high: 4.0, color: '#c4956a' },
+  { key: 'alt', label: 'ALT (肝指數)', unit: 'U/L', low: 7, high: 56, critical_low: 0, critical_high: 100, color: '#c4a05a' },
+  { key: 'ast', label: 'AST', unit: 'U/L', low: 10, high: 40, critical_low: 0, critical_high: 80, color: '#b58a5e' },
+  { key: 'creatinine', label: '肌酐酸', unit: 'mg/dL', low: 0.7, high: 1.3, critical_low: 0.5, critical_high: 2.0, color: '#7a9e8e' },
+  { key: 'ldl', label: 'LDL膽固醇', unit: 'mg/dL', low: 0, high: 130, critical_low: 0, critical_high: 160, color: '#c4956a' },
+  { key: 'hdl', label: 'HDL膽固醇', unit: 'mg/dL', low: 40, high: 100, critical_low: 30, critical_high: 200, color: '#7a9e8e' },
+  { key: 'prolactin', label: '泌乳素', unit: 'ng/mL', low: 2, high: 18, critical_low: 0, critical_high: 30, color: '#a87ab0' },
+  { key: 'dht', label: 'DHT', unit: 'pg/mL', low: 300, high: 850, critical_low: 200, critical_high: 1200, color: '#9b8bb8' },
+  { key: 'igf1', label: 'IGF-1', unit: 'ng/mL', low: 100, high: 350, critical_low: 50, critical_high: 500, color: '#6b9aaa' },
+  { key: 'tsh', label: 'TSH', unit: 'mIU/L', low: 0.4, high: 4.0, critical_low: 0.1, critical_high: 10, color: '#b48dba' },
+  { key: 'bp_sys', label: '收縮壓', unit: 'mmHg', low: 90, high: 130, critical_low: 80, critical_high: 140, color: '#b85c5c' },
+  { key: 'bp_dia', label: '舒張壓', unit: 'mmHg', low: 60, high: 85, critical_low: 50, critical_high: 90, color: '#a05050' },
 ];
 
 const getMarkerStatus = (marker, value) => {
   if (value === undefined || value === null || value === '') return null;
   const v = parseFloat(value);
   if (isNaN(v)) return null;
-  if (v <= marker.critical_low) return { status: 'critical_low', label: '⚠️ 嚴重偏低', color: '#ef4444' };
-  if (v >= marker.critical_high) return { status: 'critical_high', label: '⚠️ 嚴重偏高', color: '#ef4444' };
-  if (v < marker.low) return { status: 'low', label: '偏低', color: '#fb923c' };
-  if (v > marker.high) return { status: 'high', label: '偏高', color: '#fb923c' };
-  return { status: 'normal', label: '正常', color: '#34d399' };
+  if (v <= marker.critical_low) return { status: 'critical_low', label: '⚠️ 嚴重偏低', color: '#b85c5c' };
+  if (v >= marker.critical_high) return { status: 'critical_high', label: '⚠️ 嚴重偏高', color: '#b85c5c' };
+  if (v < marker.low) return { status: 'low', label: '偏低', color: '#c4956a' };
+  if (v > marker.high) return { status: 'high', label: '偏高', color: '#c4956a' };
+  return { status: 'normal', label: '正常', color: '#7a9e8e' };
 };
 
 // === Dose Calculator ===
@@ -483,46 +483,46 @@ const MORNING_CHECKIN = [
   { key: 'morning_erection', label: '晨勃強度', icon: '🍆',
     levels: ['無', '微弱', '一般', '明顯', '很強', '超硬'],
     significance: 'E2/T平衡的最佳指標。持續無晨勃=E2失衡或T不足',
-    colors: ['#ef4444','#fb923c','#fbbf24','#a3e635','#34d399','#22d3ee'] },
+    colors: ['#b85c5c','#c4956a','#c4a05a','#8aab6e','#7a9e8e','#6b9aaa'] },
   { key: 'energy_wakeup', label: '起床精神', icon: '⚡',
     levels: ['極差', '疲累', '普通', '不錯', '精神好', '滿血復活'],
     significance: '反映睡眠品質+T水平。持續疲累=可能E2偏高或T波谷',
-    colors: ['#ef4444','#fb923c','#fbbf24','#a3e635','#34d399','#22d3ee'] },
+    colors: ['#b85c5c','#c4956a','#c4a05a','#8aab6e','#7a9e8e','#6b9aaa'] },
   { key: 'face_puffiness', label: '臉部水腫感', icon: '💧',
     levels: ['完全乾爽','幾乎沒有','輕微','明顯','很腫','嚴重'],
     significance: 'E2偏高的早期信號。注射後2-3天最明顯',
-    colors: ['#22d3ee','#34d399','#a3e635','#fbbf24','#fb923c','#ef4444'] },
+    colors: ['#6b9aaa','#7a9e8e','#8aab6e','#c4a05a','#c4956a','#b85c5c'] },
   { key: 'joint_feel', label: '關節感覺', icon: '🦴',
     levels: ['很乾/卡','偏乾','普通','滑順','很舒服','超潤滑'],
     significance: 'E2過低=關節乾卡。AI用太多的警告指標',
-    colors: ['#ef4444','#fb923c','#fbbf24','#a3e635','#34d399','#22d3ee'] },
+    colors: ['#b85c5c','#c4956a','#c4a05a','#8aab6e','#7a9e8e','#6b9aaa'] },
   { key: 'skin_oil', label: '皮膚出油', icon: '💆',
     levels: ['完全乾','偏乾','正常','偏油','很油','爆油'],
     significance: 'DHT活性指標。出油增加=雄性激素活性高',
-    colors: ['#60a5fa','#34d399','#a3e635','#fbbf24','#fb923c','#ef4444'] },
+    colors: ['#7a94b0','#7a9e8e','#8aab6e','#c4a05a','#c4956a','#b85c5c'] },
 ];
 
 const EVENING_CHECKIN = [
   { key: 'overall_energy', label: '今日整體精力', icon: '🔋',
     levels: ['極差','低落','普通','不錯','充沛','爆發'],
     significance: '綜合反映T水平和睡眠恢復品質',
-    colors: ['#ef4444','#fb923c','#fbbf24','#a3e635','#34d399','#22d3ee'] },
+    colors: ['#b85c5c','#c4956a','#c4a05a','#8aab6e','#7a9e8e','#6b9aaa'] },
   { key: 'libido_level', label: '性慾程度', icon: '🔥',
     levels: ['完全無','很低','普通','偏高','很強','爆棚'],
     significance: 'E2+T平衡的綜合指標。E2過高或過低都會降低',
-    colors: ['#ef4444','#fb923c','#fbbf24','#a3e635','#34d399','#22d3ee'] },
+    colors: ['#b85c5c','#c4956a','#c4a05a','#8aab6e','#7a9e8e','#6b9aaa'] },
   { key: 'mood_stability', label: '情緒穩定度', icon: '🧠',
     levels: ['很暴躁','易怒','偏波動','穩定','很好','極佳'],
     significance: 'E2波動大=情緒不穩。頻率注射可改善',
-    colors: ['#ef4444','#fb923c','#fbbf24','#a3e635','#34d399','#22d3ee'] },
+    colors: ['#b85c5c','#c4956a','#c4a05a','#8aab6e','#7a9e8e','#6b9aaa'] },
   { key: 'workout_perf', label: '訓練表現', icon: '🏋️',
     levels: ['沒練','很差','普通','不錯','很強','破紀錄'],
     significance: '反映T水平和恢復品質。注意0=沒練不是差',
-    colors: ['#666','#fb923c','#fbbf24','#a3e635','#34d399','#22d3ee'] },
+    colors: ['#8a847b','#c4956a','#c4a05a','#8aab6e','#7a9e8e','#6b9aaa'] },
   { key: 'body_temp', label: '體溫感覺', icon: '🌡️',
     levels: ['發冷','偏冷','正常','偏熱','很熱','發燒感'],
     significance: 'Tren會升高體溫。異常升高注意肝臟',
-    colors: ['#60a5fa','#93c5fd','#a3e635','#fbbf24','#fb923c','#ef4444'] },
+    colors: ['#7a94b0','#94afc4','#8aab6e','#c4a05a','#c4956a','#b85c5c'] },
 ];
 
 // Ad-hoc notable symptoms (binary, only log when present)
@@ -1701,7 +1701,7 @@ function App() {
       </div>
 
       {autoImportMsg && (
-        <div style={{position:'fixed',top:60,left:'50%',transform:'translateX(-50%)',background:'var(--green)',color:'#fff',padding:'10px 20px',borderRadius:10,zIndex:999,fontSize:'0.9em',boxShadow:'0 4px 12px rgba(0,0,0,0.3)'}}>{autoImportMsg}</div>
+        <div style={{position:'fixed',top:60,left:'50%',transform:'translateX(-50%)',background:'var(--green)',color:'#fff',padding:'10px 20px',borderRadius:10,zIndex:999,fontSize:'0.9em',boxShadow:'0 4px 12px rgba(45,42,38,0.12)'}}>{autoImportMsg}</div>
       )}
 
       {tab === 'record' && <RecordPage data={data} updateData={updateData} selectedDate={selectedDate} setSelectedDate={setSelectedDate} saveStatus={saveStatus} setSaveStatus={setSaveStatus} />}
@@ -2192,7 +2192,7 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
                     return (
                       <div key={dk} style={{marginBottom:10,paddingLeft:4}}>
                         {missed && (
-                          <div style={{background: missed.urgency === 'high' ? 'rgba(239,68,68,0.15)' : missed.urgency === 'medium' ? 'rgba(251,146,60,0.15)' : 'rgba(96,165,250,0.15)',
+                          <div style={{background: missed.urgency === 'high' ? 'rgba(184,92,92,0.12)' : missed.urgency === 'medium' ? 'rgba(196,149,106,0.12)' : 'rgba(107,127,153,0.12)',
                             border: `1px solid ${missed.urgency === 'high' ? 'var(--red)' : missed.urgency === 'medium' ? 'var(--orange)' : 'var(--blue)'}`,
                             borderRadius:8,padding:'6px 8px',marginBottom:4,fontSize:'0.75em'}}>
                             ⏰ {d.label}：距上次 {missed.daysSince} 天 — {missed.suggestTime}
@@ -2580,9 +2580,9 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
           const total = d + r + l + a || 1;
           return (
             <div className="sleep-bar">
-              <div style={{width:`${d/total*100}%`,background:'#6366f1'}} title={`深睡 ${d}m`} />
-              <div style={{width:`${r/total*100}%`,background:'#a78bfa'}} title={`REM ${r}m`} />
-              <div style={{width:`${l/total*100}%`,background:'#60a5fa'}} title={`淺睡 ${l}m`} />
+              <div style={{width:`${d/total*100}%`,background:'#6b6fa0'}} title={`深睡 ${d}m`} />
+              <div style={{width:`${r/total*100}%`,background:'#8b7fa8'}} title={`REM ${r}m`} />
+              <div style={{width:`${l/total*100}%`,background:'#7a94b0'}} title={`淺睡 ${l}m`} />
               <div style={{width:`${a/total*100}%`,background:'#374151'}} title={`清醒 ${a}m`} />
             </div>
           );
@@ -2831,17 +2831,17 @@ function ChartPage({ data, setTab }) {
       },
       options: {
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { labels: { color: '#ccc', font: { size: 10 } } } },
+        plugins: { legend: { labels: { color: '#5c5850', font: { size: 10 } } } },
         scales: {
-          x: { ticks: { color: '#888', maxTicksLimit: 8 }, grid: { color: '#222' } },
-          y: { ticks: { color: '#888' }, grid: { color: '#222' } }
+          x: { ticks: { color: '#8a847b', maxTicksLimit: 8 }, grid: { color: '#e8e3dc' } },
+          y: { ticks: { color: '#8a847b' }, grid: { color: '#e8e3dc' } }
         }
       }
     });
 
     // Symptom chart
     const negSymptoms = SYMPTOMS.filter(s => s.type === 'negative' && weeks.some(w => weekly[w].symptoms[s.key]));
-    const colors = ['#ef4444','#f97316','#eab308','#22c55e','#14b8a6','#6366f1','#a855f7','#f43f5e','#84cc16','#fb923c'];
+    const colors = ['#b85c5c','#c4856a','#c4a05a','#7a9e8e','#6b9aaa','#6b6fa0','#8b7fa8','#a87ab0','#89b0a3','#c4956a'];
     if (chart2.current) chart2.current.destroy();
     chart2.current = new Chart(chartRef2.current, {
       type: 'bar',
@@ -2857,10 +2857,10 @@ function ChartPage({ data, setTab }) {
       },
       options: {
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { labels: { color: '#ccc', font: { size: 10 } } } },
+        plugins: { legend: { labels: { color: '#5c5850', font: { size: 10 } } } },
         scales: {
-          x: { stacked: true, ticks: { color: '#888', maxTicksLimit: 8 }, grid: { color: '#222' } },
-          y: { stacked: true, ticks: { color: '#888' }, grid: { color: '#222' } }
+          x: { stacked: true, ticks: { color: '#8a847b', maxTicksLimit: 8 }, grid: { color: '#e8e3dc' } },
+          y: { stacked: true, ticks: { color: '#8a847b' }, grid: { color: '#e8e3dc' } }
         }
       }
     });
@@ -2876,17 +2876,17 @@ function ChartPage({ data, setTab }) {
           datasets: [{
             label: '深睡',
             data: sleepDates.map(d => parseInt(data[d].sleep.deep)||0),
-            backgroundColor: '#6366f188', borderColor: '#6366f1', borderWidth: 1,
+            backgroundColor: '#6b6fa088', borderColor: '#6b6fa0', borderWidth: 1,
             stack: 'sleep'
           }, {
             label: 'REM',
             data: sleepDates.map(d => parseInt(data[d].sleep.rem)||0),
-            backgroundColor: '#a78bfa88', borderColor: '#a78bfa', borderWidth: 1,
+            backgroundColor: '#8b7fa888', borderColor: '#8b7fa8', borderWidth: 1,
             stack: 'sleep'
           }, {
             label: '淺睡',
             data: sleepDates.map(d => parseInt(data[d].sleep.light)||0),
-            backgroundColor: '#60a5fa88', borderColor: '#60a5fa', borderWidth: 1,
+            backgroundColor: '#7a94b088', borderColor: '#7a94b0', borderWidth: 1,
             stack: 'sleep'
           }, {
             label: '總時數 (hr)',
@@ -2900,9 +2900,9 @@ function ChartPage({ data, setTab }) {
               return +(mins/60).toFixed(1);
             }),
             type: 'line',
-            borderColor: '#fbbf24',
-            backgroundColor: '#fbbf2422',
-            pointBackgroundColor: '#fbbf24',
+            borderColor: '#c4a05a',
+            backgroundColor: '#c4a05a22',
+            pointBackgroundColor: '#c4a05a',
             pointRadius: 4,
             tension: 0.3,
             yAxisID: 'y1'
@@ -2910,9 +2910,9 @@ function ChartPage({ data, setTab }) {
             label: 'HRV',
             data: sleepDates.map(d => data[d].sleep.hrv || data[d].sleep.sleepHRV || 0),
             type: 'line',
-            borderColor: '#34d399',
-            backgroundColor: '#34d39922',
-            pointBackgroundColor: '#34d399',
+            borderColor: '#7a9e8e',
+            backgroundColor: '#7a9e8e22',
+            pointBackgroundColor: '#7a9e8e',
             pointRadius: 3,
             tension: 0.3,
             borderDash: [4,4],
@@ -2921,11 +2921,11 @@ function ChartPage({ data, setTab }) {
         },
         options: {
           responsive: true, maintainAspectRatio: false,
-          plugins: { legend: { labels: { color: '#ccc', font: { size: 10 } } } },
+          plugins: { legend: { labels: { color: '#5c5850', font: { size: 10 } } } },
           scales: {
-            x: { stacked: true, ticks: { color: '#888', maxTicksLimit: 10 }, grid: { color: '#222' } },
-            y: { stacked: true, title: { display: true, text: '分鐘', color: '#888' }, ticks: { color: '#888' }, grid: { color: '#222' } },
-            y1: { position: 'right', title: { display: true, text: '小時', color: '#fbbf24' }, ticks: { color: '#fbbf24' }, grid: { display: false } },
+            x: { stacked: true, ticks: { color: '#8a847b', maxTicksLimit: 10 }, grid: { color: '#e8e3dc' } },
+            y: { stacked: true, title: { display: true, text: '分鐘', color: '#8a847b' }, ticks: { color: '#8a847b' }, grid: { color: '#e8e3dc' } },
+            y1: { position: 'right', title: { display: true, text: '小時', color: '#c4a05a' }, ticks: { color: '#c4a05a' }, grid: { display: false } },
             y2: { display: false, min: 0, max: 6 }
           }
         }
@@ -2938,7 +2938,7 @@ function ChartPage({ data, setTab }) {
       if (checkinChart.current) checkinChart.current.destroy();
       const checkinDatasets = [];
       // Morning items
-      const mColors = ['#f472b6','#fbbf24','#60a5fa','#a78bfa','#fb923c'];
+      const mColors = ['#c4856a','#c4a05a','#7a94b0','#8b7fa8','#c4956a'];
       MORNING_CHECKIN.forEach((item, idx) => {
         const hasData = checkinDates.some(d => data[d]?.morningScores?.[item.key] !== undefined);
         if (!hasData) return;
@@ -2951,7 +2951,7 @@ function ChartPage({ data, setTab }) {
         });
       });
       // Evening items
-      const eColors = ['#34d399','#818cf8','#e879f9','#22d3ee','#ef4444'];
+      const eColors = ['#7a9e8e','#7882a8','#b48dba','#6b9aaa','#b85c5c'];
       EVENING_CHECKIN.forEach((item, idx) => {
         const hasData = checkinDates.some(d => data[d]?.eveningScores?.[item.key] !== undefined);
         if (!hasData) return;
@@ -2970,10 +2970,10 @@ function ChartPage({ data, setTab }) {
           data: { labels: checkinDates.map(d => d.slice(5)), datasets: checkinDatasets },
           options: {
             responsive: true, maintainAspectRatio: false,
-            plugins: { legend: { labels: { color: '#ccc', font: { size: 9 } } } },
+            plugins: { legend: { labels: { color: '#5c5850', font: { size: 9 } } } },
             scales: {
-              x: { ticks: { color: '#888', maxTicksLimit: 10 }, grid: { color: '#222' } },
-              y: { min: 0, max: 5, ticks: { color: '#888', stepSize: 1 }, grid: { color: '#222' } }
+              x: { ticks: { color: '#8a847b', maxTicksLimit: 10 }, grid: { color: '#e8e3dc' } },
+              y: { min: 0, max: 5, ticks: { color: '#8a847b', stepSize: 1 }, grid: { color: '#e8e3dc' } }
             },
             interaction: { mode: 'index', intersect: false }
           }
@@ -3300,14 +3300,14 @@ function SmartPage({ data, updateData, selectedDate }) {
     const datasets = [{
       label: '總活性 T (mg)',
       data: validLevels.map(l => l.totalT),
-      borderColor: '#60a5fa',
-      backgroundColor: '#60a5fa22',
+      borderColor: '#7a94b0',
+      backgroundColor: '#7a94b022',
       fill: true, tension: 0.4, pointRadius: 2, borderWidth: 2, yAxisID: 'y'
     }, {
       label: 'E2 貢獻指數',
       data: validLevels.map(l => l.e2),
-      borderColor: '#f472b6',
-      backgroundColor: '#f472b622',
+      borderColor: '#c4856a',
+      backgroundColor: '#c4856a22',
       fill: true, tension: 0.4, pointRadius: 2, borderWidth: 2, yAxisID: 'y1'
     }];
 
@@ -3331,7 +3331,7 @@ function SmartPage({ data, updateData, selectedDate }) {
       options: {
         responsive: true, maintainAspectRatio: false,
         plugins: {
-          legend: { labels: { color: '#ccc', font: { size: 9 } } },
+          legend: { labels: { color: '#5c5850', font: { size: 9 } } },
           tooltip: {
             callbacks: {
               afterBody: (ctx) => {
@@ -3351,9 +3351,9 @@ function SmartPage({ data, updateData, selectedDate }) {
           }
         },
         scales: {
-          x: { ticks: { color: '#888', maxTicksLimit: 10 }, grid: { color: '#222' } },
-          y: { title: { display: true, text: '活性 T (mg)', color: '#60a5fa' }, ticks: { color: '#60a5fa' }, grid: { color: '#222' } },
-          y1: { position: 'right', title: { display: true, text: 'E2 指數', color: '#f472b6' }, ticks: { color: '#f472b6' }, grid: { display: false } }
+          x: { ticks: { color: '#8a847b', maxTicksLimit: 10 }, grid: { color: '#e8e3dc' } },
+          y: { title: { display: true, text: '活性 T (mg)', color: '#7a94b0' }, ticks: { color: '#7a94b0' }, grid: { color: '#e8e3dc' } },
+          y1: { position: 'right', title: { display: true, text: 'E2 指數', color: '#c4856a' }, ticks: { color: '#c4856a' }, grid: { display: false } }
         }
       }
     });
@@ -3402,7 +3402,7 @@ function SmartPage({ data, updateData, selectedDate }) {
       options: {
         responsive: true, maintainAspectRatio: false,
         plugins: {
-          legend: { labels: { color: '#ccc', font: { size: 9 } } },
+          legend: { labels: { color: '#5c5850', font: { size: 9 } } },
           tooltip: {
             callbacks: {
               label: (ctx) => {
@@ -3424,10 +3424,10 @@ function SmartPage({ data, updateData, selectedDate }) {
           }
         },
         scales: {
-          x: { ticks: { color: '#888', maxTicksLimit: 10 }, grid: { color: '#222' } },
+          x: { ticks: { color: '#8a847b', maxTicksLimit: 10 }, grid: { color: '#e8e3dc' } },
           y: {
-            title: { display: true, text: '體內殘餘量 (mg)', color: '#ccc' },
-            ticks: { color: '#888' }, grid: { color: '#222' },
+            title: { display: true, text: '體內殘餘量 (mg)', color: '#5c5850' },
+            ticks: { color: '#8a847b' }, grid: { color: '#e8e3dc' },
             beginAtZero: true
           }
         },
@@ -3450,17 +3450,17 @@ function SmartPage({ data, updateData, selectedDate }) {
         datasets: [{
           label: '體重 (kg)',
           data: weightDates.map(d => data[d].weight),
-          borderColor: '#fbbf24',
-          backgroundColor: '#fbbf2422',
-          fill: true, tension: 0.3, pointRadius: 4, pointBackgroundColor: '#fbbf24'
+          borderColor: '#c4a05a',
+          backgroundColor: '#c4a05a22',
+          fill: true, tension: 0.3, pointRadius: 4, pointBackgroundColor: '#c4a05a'
         }]
       },
       options: {
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { labels: { color: '#ccc', font: { size: 10 } } } },
+        plugins: { legend: { labels: { color: '#5c5850', font: { size: 10 } } } },
         scales: {
-          x: { ticks: { color: '#888', maxTicksLimit: 10 }, grid: { color: '#222' } },
-          y: { ticks: { color: '#888' }, grid: { color: '#222' } }
+          x: { ticks: { color: '#8a847b', maxTicksLimit: 10 }, grid: { color: '#e8e3dc' } },
+          y: { ticks: { color: '#8a847b' }, grid: { color: '#e8e3dc' } }
         }
       }
     });
@@ -3617,7 +3617,7 @@ function SmartPage({ data, updateData, selectedDate }) {
         }).map(d => {
           const r = calcVialRemaining(d.key, inventory, data);
           return (
-            <div key={d.key} style={{background: r.isEmpty ? 'rgba(239,68,68,0.15)' : 'rgba(251,146,60,0.15)',border:`1px solid ${r.isEmpty ? 'var(--red)' : 'var(--orange)'}`,borderRadius:8,padding:'6px 10px',marginBottom:6,fontSize:'0.78em'}}>
+            <div key={d.key} style={{background: r.isEmpty ? 'rgba(184,92,92,0.12)' : 'rgba(196,149,106,0.12)',border:`1px solid ${r.isEmpty ? 'var(--red)' : 'var(--orange)'}`,borderRadius:8,padding:'6px 10px',marginBottom:6,fontSize:'0.78em'}}>
               {r.isEmpty ? '🚨' : '⚠️'} {d.label}：剩餘 {r.remaining.toFixed(1)} {d.unit}
               {r.daysLeft !== null && ` — 預估還能用 ${r.daysLeft} 天`}
             </div>
@@ -3711,7 +3711,7 @@ function SmartPage({ data, updateData, selectedDate }) {
                       onClick={() => saveBloodWork(bloodWork.filter(b => b.date !== bw.date))}>刪除</button>
                   </div>
                   {alerts.length > 0 && (
-                    <div style={{background:'rgba(239,68,68,0.15)',borderRadius:6,padding:6,marginBottom:6,fontSize:'0.75em',color:'var(--red)'}}>
+                    <div style={{background:'rgba(184,92,92,0.12)',borderRadius:6,padding:6,marginBottom:6,fontSize:'0.75em',color:'var(--red)'}}>
                       ⚠️ 異常項目：{alerts.map(m => `${m.label} ${bw[m.key]}${m.unit}`).join('、')}
                     </div>
                   )}
@@ -3882,35 +3882,35 @@ function PhotoTimeline({ data, sortedDates }) {
         datasets: [{
           label: '💪 充血度',
           data: datesWithAnalysis.map(d => data[d].faceAnalysis.pumpScore||0),
-          borderColor: '#34d399',
-          backgroundColor: '#34d39922',
-          fill: false, tension: 0.3, pointRadius: 4, pointBackgroundColor: '#34d399'
+          borderColor: '#7a9e8e',
+          backgroundColor: '#7a9e8e22',
+          fill: false, tension: 0.3, pointRadius: 4, pointBackgroundColor: '#7a9e8e'
         }, {
           label: '📐 線條',
           data: datesWithAnalysis.map(d => data[d].faceAnalysis.definitionScore||0),
-          borderColor: '#60a5fa',
-          backgroundColor: '#60a5fa22',
-          fill: false, tension: 0.3, pointRadius: 3, pointBackgroundColor: '#60a5fa'
+          borderColor: '#7a94b0',
+          backgroundColor: '#7a94b022',
+          fill: false, tension: 0.3, pointRadius: 3, pointBackgroundColor: '#7a94b0'
         }, {
           label: '💧 水腫',
           data: datesWithAnalysis.map(d => data[d].faceAnalysis.waterScore||0),
-          borderColor: '#fb923c',
-          backgroundColor: '#fb923c22',
-          fill: false, tension: 0.3, pointRadius: 3, pointBackgroundColor: '#fb923c'
+          borderColor: '#c4956a',
+          backgroundColor: '#c4956a22',
+          fill: false, tension: 0.3, pointRadius: 3, pointBackgroundColor: '#c4956a'
         }, {
           label: '腫脹指數',
           data: datesWithAnalysis.map(d => data[d].faceAnalysis.swellingIndex),
-          borderColor: '#a78bfa',
-          backgroundColor: '#a78bfa22',
-          fill: false, tension: 0.3, pointRadius: 3, pointBackgroundColor: '#a78bfa', hidden: true
+          borderColor: '#8b7fa8',
+          backgroundColor: '#8b7fa822',
+          fill: false, tension: 0.3, pointRadius: 3, pointBackgroundColor: '#8b7fa8', hidden: true
         }]
       },
       options: {
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { labels: { color: '#ccc', font: { size: 10 } } } },
+        plugins: { legend: { labels: { color: '#5c5850', font: { size: 10 } } } },
         scales: {
-          x: { ticks: { color: '#888', maxTicksLimit: 8 }, grid: { color: '#222' } },
-          y: { min: 0, max: 100, ticks: { color: '#888' }, grid: { color: '#222' } }
+          x: { ticks: { color: '#8a847b', maxTicksLimit: 8 }, grid: { color: '#e8e3dc' } },
+          y: { min: 0, max: 100, ticks: { color: '#8a847b' }, grid: { color: '#e8e3dc' } }
         }
       }
     });
@@ -4369,7 +4369,7 @@ function AutoSleepImport({ data, updateData }) {
 
       {importResult && (
         <div style={{marginTop:8,padding:8,borderRadius:8,textAlign:'center',fontSize:'0.85em',
-          background: importResult.includes('✓') ? 'rgba(52,211,153,0.15)' : 'rgba(251,146,60,0.15)',
+          background: importResult.includes('✓') ? 'rgba(122,158,142,0.12)' : 'rgba(196,149,106,0.12)',
           color: importResult.includes('✓') ? 'var(--green)' : 'var(--orange)'}}>
           {importResult}
         </div>
