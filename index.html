@@ -267,6 +267,10 @@ const DRUGS = [
     pk: { halfLife: 0.15, perUnit: 1, aromatize: 0 }},
   { key: 'bpc', label: 'BPC-157', unit: 'mcg', color: '#e879f9', cat: 'peptide', conc: null,
     pk: null },
+  { key: 'ghk_cu', label: 'GHK-Cu', unit: 'mcg', color: '#c084fc', cat: 'peptide', conc: null,
+    pk: null },
+  { key: 'cjc_ipam', label: 'CJC+IPAM', unit: 'mcg', color: '#a78bfa', cat: 'peptide', conc: null,
+    pk: null },
   // === AI & Ancillaries ===
   { key: 'ai', label: 'Aromasin', unit: '片', color: '#fb923c', cat: 'ai', conc: null,
     pk: null },
@@ -382,6 +386,15 @@ const calcDose = (mgNeeded, concMgPerMl) => {
   if (!mgNeeded || !concMgPerMl) return null;
   return { ml: (mgNeeded / concMgPerMl).toFixed(2), mg: mgNeeded, concMgPerMl };
 };
+
+// === Current Daily Protocol (固定菜單) ===
+// Stores the user's current daily drug/dose defaults so they don't retype every day
+const DAILY_PROTOCOL_KEY = 'daily_protocol';
+const loadDailyProtocol = () => {
+  try { return JSON.parse(localStorage.getItem(DAILY_PROTOCOL_KEY) || '{"drugs":{},"drugTimes":{}}'); }
+  catch { return { drugs: {}, drugTimes: {} }; }
+};
+const saveDailyProtocol = (p) => localStorage.setItem(DAILY_PROTOCOL_KEY, JSON.stringify(p));
 
 // === Cycle/Protocol Management ===
 const PROTOCOL_KEY = 'steroid_protocols';
@@ -550,6 +563,9 @@ const DRUG_SCHEDULES = {
   tren_e: { intervalDays: 3.5, label: '每3.5天', bestTime: 'any', note: '長酯，每週兩次' },
   hcg: { intervalDays: 3, label: '每3天', bestTime: 'any', note: '半衰期短，少量多次' },
   hgh: { intervalDays: 1, label: '每天', bestTime: 'morning', note: '建議早上空腹或睡前' },
+  bpc: { intervalDays: 1, label: '每天', bestTime: 'any', note: '每日1-2次，可分早晚' },
+  ghk_cu: { intervalDays: 1, label: '每天', bestTime: 'any', note: '每日皮下注射' },
+  cjc_ipam: { intervalDays: 1, label: '每天', bestTime: 'bedtime', note: '建議睡前打，促進GH分泌' },
 };
 
 // Calculate missed injection info
@@ -1639,8 +1655,18 @@ function App() {
 
 function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatus, setSaveStatus }) {
   const entry = data[selectedDate] || { drugs: {}, symptoms: {}, note: '' };
-  const [drugs, setDrugs] = useState(entry.drugs);
+  // Auto-fill from daily protocol if this date has no existing drug data
+  const dailyProtocol = useMemo(() => loadDailyProtocol(), []);
+  const autoFilledDrugs = useMemo(() => {
+    if (Object.keys(entry.drugs || {}).length > 0) return entry.drugs;
+    // Only auto-fill for today or future dates, not past
+    if (selectedDate >= today() && Object.keys(dailyProtocol.drugs || {}).length > 0) return { ...dailyProtocol.drugs };
+    return entry.drugs || {};
+  }, [entry.drugs, selectedDate]);
+  const [drugs, setDrugs] = useState(autoFilledDrugs);
   const [drugTimes, setDrugTimes] = useState(entry.drugTimes || {});
+  const [showProtocolSetup, setShowProtocolSetup] = useState(false);
+  const [showAllDrugs, setShowAllDrugs] = useState(false);
   const [symptoms, setSymptoms] = useState(() => normalizeSymptoms(entry.symptoms));
   const [activePeriod, setActivePeriod] = useState('allday');
   // Structured check-in scores
@@ -1675,8 +1701,19 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
 
   useEffect(() => {
     const e = data[selectedDate] || { drugs: {}, symptoms: {}, note: '' };
-    setDrugs(e.drugs || {});
-    setDrugTimes(e.drugTimes || {});
+    const protocol = loadDailyProtocol();
+    // Auto-fill: if no existing drug data for this date, use daily protocol
+    const hasExistingDrugs = Object.keys(e.drugs || {}).length > 0 && Object.values(e.drugs).some(v => v > 0);
+    if (hasExistingDrugs) {
+      setDrugs(e.drugs);
+      setDrugTimes(e.drugTimes || {});
+    } else if (Object.keys(protocol.drugs || {}).length > 0) {
+      setDrugs({ ...protocol.drugs });
+      setDrugTimes(protocol.drugTimes || {});
+    } else {
+      setDrugs(e.drugs || {});
+      setDrugTimes(e.drugTimes || {});
+    }
     setSymptoms(normalizeSymptoms(e.symptoms));
     setActivePeriod('allday');
     setNote(e.note || '');
@@ -1995,66 +2032,208 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
       )}
 
       <div className="card">
-        <h3>💊 藥物劑量</h3>
-        {DRUG_CATEGORIES.map(cat => {
-          const catDrugs = DRUGS.filter(d => d.cat === cat.key);
-          const hasUsed = catDrugs.some(d => drugs[d.key] && parseFloat(drugs[d.key]) > 0);
-          const isOpen = expandedCats.has(cat.key);
-          const hasMissed = catDrugs.some(d => getMissedInjectionInfo(data, d.key, selectedDate));
-          return (
-            <div key={cat.key} style={{marginBottom:6}}>
-              <div className="drug-cat-header" onClick={() => setExpandedCats(prev => {
-                const next = new Set(prev);
-                next.has(cat.key) ? next.delete(cat.key) : next.add(cat.key);
-                return next;
-              })}>
-                <h4 style={{color: hasUsed ? 'var(--blue)' : 'var(--text2)'}}>
-                  {cat.label} {hasUsed && <span style={{fontSize:'0.7em',color:'var(--green)'}}>●</span>}
-                  {hasMissed && <span style={{fontSize:'0.7em',color:'var(--orange)'}}> ⏰</span>}
-                </h4>
-                <span className="drug-cat-toggle">{isOpen ? '收起 ▲' : '展開 ▼'}</span>
-              </div>
-              {isOpen && catDrugs.map(d => {
-                const missed = getMissedInjectionInfo(data, d.key, selectedDate);
-                return (
-                  <div key={d.key} style={{marginBottom:10,paddingLeft:4}}>
-                    {missed && (
-                      <div style={{background: missed.urgency === 'high' ? 'rgba(239,68,68,0.15)' : missed.urgency === 'medium' ? 'rgba(251,146,60,0.15)' : 'rgba(96,165,250,0.15)',
-                        border: `1px solid ${missed.urgency === 'high' ? 'var(--red)' : missed.urgency === 'medium' ? 'var(--orange)' : 'var(--blue)'}`,
-                        borderRadius:8,padding:'6px 8px',marginBottom:4,fontSize:'0.75em'}}>
-                        ⏰ {d.label}：距上次 {missed.daysSince} 天 — {missed.suggestTime}
+        <h3 style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          💊 藥物劑量
+          <button onClick={() => setShowProtocolSetup(!showProtocolSetup)}
+            style={{background:showProtocolSetup?'var(--blue)':'var(--card2)',border:'1px solid var(--border)',borderRadius:8,padding:'4px 10px',
+              color:showProtocolSetup?'#fff':'var(--text2)',fontSize:'0.72em',cursor:'pointer'}}>
+            ⚙️ 固定菜單
+          </button>
+        </h3>
+
+        {/* Protocol Setup UI */}
+        {showProtocolSetup && (
+          <div style={{background:'var(--card2)',borderRadius:10,padding:12,marginBottom:12,border:'1px solid var(--purple)'}}>
+            <div style={{fontSize:'0.82em',color:'var(--purple)',marginBottom:8,fontWeight:600}}>📋 設定每日固定菜單</div>
+            <p style={{fontSize:'0.72em',color:'var(--text2)',marginBottom:10}}>設定後，每天紀錄會自動帶入這些藥物和劑量，只需選擇時間即可</p>
+            {DRUG_CATEGORIES.map(cat => {
+              const catDrugs = DRUGS.filter(d => d.cat === cat.key);
+              return (
+                <div key={cat.key} style={{marginBottom:6}}>
+                  <div style={{fontSize:'0.75em',color:'var(--text2)',marginBottom:4}}>{cat.label}</div>
+                  {catDrugs.map(d => {
+                    const proto = loadDailyProtocol();
+                    const hasProto = proto.drugs[d.key] && parseFloat(proto.drugs[d.key]) > 0;
+                    return (
+                      <div key={d.key} style={{display:'flex',alignItems:'center',gap:6,marginBottom:4,paddingLeft:4}}>
+                        <div style={{color:d.color,fontSize:'0.78em',minWidth:85}}>{d.label}</div>
+                        <input className="drug-input" type="number" step="any" placeholder="0"
+                          defaultValue={proto.drugs[d.key] || ''}
+                          inputMode="decimal"
+                          style={{flex:'1 1 40px',minWidth:40,padding:'6px 8px',fontSize:'0.85em'}}
+                          onChange={e => {
+                            const p = loadDailyProtocol();
+                            const val = parseFloat(e.target.value) || 0;
+                            if (val > 0) p.drugs[d.key] = val;
+                            else delete p.drugs[d.key];
+                            saveDailyProtocol(p);
+                          }} />
+                        <span style={{fontSize:'0.7em',color:'var(--text2)',minWidth:24}}>{d.unit}</span>
+                        <select defaultValue={proto.drugTimes?.[d.key] || ''}
+                          style={{background:'var(--bg)',border:'1px solid var(--border)',borderRadius:6,padding:'4px 6px',color:'var(--text)',fontSize:'0.72em'}}
+                          onChange={e => {
+                            const p = loadDailyProtocol();
+                            if (!p.drugTimes) p.drugTimes = {};
+                            p.drugTimes[d.key] = e.target.value;
+                            saveDailyProtocol(p);
+                          }}>
+                          <option value="">時間</option>
+                          <option value="morning">🌅 起床</option>
+                          <option value="evening">🌙 睡前</option>
+                          <option value="both">🔄 早晚各一次</option>
+                        </select>
+                        {hasProto && <span style={{color:'var(--green)',fontSize:'0.7em'}}>✓</span>}
                       </div>
-                    )}
+                    );
+                  })}
+                </div>
+              );
+            })}
+            <button onClick={() => {
+              const p = loadDailyProtocol();
+              setDrugs(prev => {
+                const hasExisting = Object.values(prev).some(v => v > 0);
+                return hasExisting ? prev : { ...p.drugs };
+              });
+              setShowProtocolSetup(false);
+            }} style={{width:'100%',padding:'8px',background:'var(--purple)',color:'#fff',border:'none',borderRadius:8,fontSize:'0.85em',cursor:'pointer',marginTop:6}}>
+              ✅ 儲存菜單
+            </button>
+          </div>
+        )}
+
+        {/* Protocol drugs (auto-filled, prominent) */}
+        {(() => {
+          const protocol = loadDailyProtocol();
+          const protocolKeys = Object.keys(protocol.drugs || {}).filter(k => protocol.drugs[k] > 0);
+          const nonProtocolUsed = Object.keys(drugs).filter(k => parseFloat(drugs[k]) > 0 && !protocolKeys.includes(k));
+
+          return (
+            <>
+              {protocolKeys.length > 0 && (
+                <div style={{marginBottom:10}}>
+                  <div style={{fontSize:'0.75em',color:'var(--purple)',marginBottom:6}}>📋 固定菜單（自動帶入）</div>
+                  {protocolKeys.map(dk => {
+                    const d = DRUGS.find(x => x.key === dk);
+                    if (!d) return null;
+                    const missed = getMissedInjectionInfo(data, d.key, selectedDate);
+                    return (
+                      <div key={dk} style={{marginBottom:10,paddingLeft:4}}>
+                        {missed && (
+                          <div style={{background: missed.urgency === 'high' ? 'rgba(239,68,68,0.15)' : missed.urgency === 'medium' ? 'rgba(251,146,60,0.15)' : 'rgba(96,165,250,0.15)',
+                            border: `1px solid ${missed.urgency === 'high' ? 'var(--red)' : missed.urgency === 'medium' ? 'var(--orange)' : 'var(--blue)'}`,
+                            borderRadius:8,padding:'6px 8px',marginBottom:4,fontSize:'0.75em'}}>
+                            ⏰ {d.label}：距上次 {missed.daysSince} 天 — {missed.suggestTime}
+                          </div>
+                        )}
+                        <div className="drug-row" style={{flexWrap:'wrap'}}>
+                          <div className="drug-label" style={{color:d.color,minWidth:90,fontSize:'0.82em'}}>{d.label}</div>
+                          <input className="drug-input" type="number" step="any" placeholder="0"
+                            value={drugs[dk] || ''} onChange={e => setDrug(dk, e.target.value)}
+                            inputMode="decimal" style={{flex:'1 1 50px',minWidth:50}} />
+                          <div className="drug-unit" style={{fontSize:'0.75em'}}>{d.unit}</div>
+                          <input type="time" value={drugTimes[dk] || ''}
+                            onChange={e => setDrugTime(dk, e.target.value)}
+                            style={{background:'var(--card2)',border:'1px solid var(--border)',borderRadius:8,padding:'5px 6px',color:'var(--text)',fontSize:'0.78em',outline:'none',width:85,flexShrink:0}} />
+                        </div>
+                        <div style={{display:'flex',gap:4,marginTop:3,marginLeft:90,flexWrap:'wrap',alignItems:'center'}}>
+                          {INJECT_PRESETS.map(p => (
+                            <button key={p.key} onClick={() => setDrugTime(dk, p.getTime())}
+                              style={{background: drugTimes[dk] === p.getTime() ? 'var(--blue)' : 'var(--card2)',
+                                border:'1px solid var(--border)',borderRadius:12,padding:'3px 8px',
+                                color: drugTimes[dk] === p.getTime() ? '#fff' : 'var(--text2)',fontSize:'0.68em',cursor:'pointer',whiteSpace:'nowrap'}}>
+                              {p.icon} {p.label}
+                            </button>
+                          ))}
+                          {DRUG_SCHEDULES[dk] && (
+                            <span style={{fontSize:'0.62em',color:'var(--text2)'}}>💡{DRUG_SCHEDULES[dk].note}</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Non-protocol drugs that are already used today */}
+              {nonProtocolUsed.length > 0 && nonProtocolUsed.map(dk => {
+                const d = DRUGS.find(x => x.key === dk);
+                if (!d) return null;
+                return (
+                  <div key={dk} style={{marginBottom:10,paddingLeft:4}}>
                     <div className="drug-row" style={{flexWrap:'wrap'}}>
-                      <div className="drug-label" style={{color: d.color,minWidth:90,fontSize:'0.82em'}}>{d.label}</div>
+                      <div className="drug-label" style={{color:d.color,minWidth:90,fontSize:'0.82em'}}>{d.label}</div>
                       <input className="drug-input" type="number" step="any" placeholder="0"
-                        value={drugs[d.key] || ''} onChange={e => setDrug(d.key, e.target.value)}
+                        value={drugs[dk] || ''} onChange={e => setDrug(dk, e.target.value)}
                         inputMode="decimal" style={{flex:'1 1 50px',minWidth:50}} />
                       <div className="drug-unit" style={{fontSize:'0.75em'}}>{d.unit}</div>
-                      <input type="time" value={drugTimes[d.key] || ''}
-                        onChange={e => setDrugTime(d.key, e.target.value)}
+                      <input type="time" value={drugTimes[dk] || ''}
+                        onChange={e => setDrugTime(dk, e.target.value)}
                         style={{background:'var(--card2)',border:'1px solid var(--border)',borderRadius:8,padding:'5px 6px',color:'var(--text)',fontSize:'0.78em',outline:'none',width:85,flexShrink:0}} />
                     </div>
-                    {(drugs[d.key] && parseFloat(drugs[d.key]) > 0) && (
-                      <div style={{display:'flex',gap:4,marginTop:3,marginLeft:90,flexWrap:'wrap',alignItems:'center'}}>
-                        {INJECT_PRESETS.map(p => (
-                          <button key={p.key} onClick={() => setDrugTime(d.key, p.getTime())}
-                            style={{background:'var(--card2)',border:'1px solid var(--border)',borderRadius:12,padding:'3px 8px',
-                              color:'var(--text2)',fontSize:'0.68em',cursor:'pointer',whiteSpace:'nowrap'}}>
-                            {p.icon} {p.label}
-                          </button>
-                        ))}
-                        {DRUG_SCHEDULES[d.key] && (
-                          <span style={{fontSize:'0.62em',color:'var(--text2)'}}>💡{DRUG_SCHEDULES[d.key].note}</span>
-                        )}
-                      </div>
-                    )}
                   </div>
                 );
               })}
-            </div>
+
+              {/* Add more drugs (collapsed) */}
+              <button onClick={() => setShowAllDrugs(!showAllDrugs)}
+                style={{width:'100%',padding:'8px',background:'var(--card2)',border:'1px solid var(--border)',borderRadius:8,
+                  color:'var(--text2)',fontSize:'0.82em',cursor:'pointer',marginTop:4}}>
+                {showAllDrugs ? '收起其他藥物 ▲' : '＋ 新增其他藥物 ▼'}
+              </button>
+
+              {showAllDrugs && (
+                <div style={{marginTop:8}}>
+                  {DRUG_CATEGORIES.map(cat => {
+                    const catDrugs = DRUGS.filter(d => d.cat === cat.key && !protocolKeys.includes(d.key));
+                    if (!catDrugs.length) return null;
+                    const hasUsed = catDrugs.some(d => drugs[d.key] && parseFloat(drugs[d.key]) > 0);
+                    const isOpen = expandedCats.has(cat.key);
+                    return (
+                      <div key={cat.key} style={{marginBottom:6}}>
+                        <div className="drug-cat-header" onClick={() => setExpandedCats(prev => {
+                          const next = new Set(prev);
+                          next.has(cat.key) ? next.delete(cat.key) : next.add(cat.key);
+                          return next;
+                        })}>
+                          <h4 style={{color: hasUsed ? 'var(--blue)' : 'var(--text2)',fontSize:'0.85em'}}>
+                            {cat.label} {hasUsed && <span style={{fontSize:'0.7em',color:'var(--green)'}}>●</span>}
+                          </h4>
+                          <span className="drug-cat-toggle">{isOpen ? '收起 ▲' : '展開 ▼'}</span>
+                        </div>
+                        {isOpen && catDrugs.map(d => (
+                          <div key={d.key} style={{marginBottom:8,paddingLeft:4}}>
+                            <div className="drug-row" style={{flexWrap:'wrap'}}>
+                              <div className="drug-label" style={{color: d.color,minWidth:90,fontSize:'0.82em'}}>{d.label}</div>
+                              <input className="drug-input" type="number" step="any" placeholder="0"
+                                value={drugs[d.key] || ''} onChange={e => setDrug(d.key, e.target.value)}
+                                inputMode="decimal" style={{flex:'1 1 50px',minWidth:50}} />
+                              <div className="drug-unit" style={{fontSize:'0.75em'}}>{d.unit}</div>
+                              <input type="time" value={drugTimes[d.key] || ''}
+                                onChange={e => setDrugTime(d.key, e.target.value)}
+                                style={{background:'var(--card2)',border:'1px solid var(--border)',borderRadius:8,padding:'5px 6px',color:'var(--text)',fontSize:'0.78em',outline:'none',width:85,flexShrink:0}} />
+                            </div>
+                            {(drugs[d.key] && parseFloat(drugs[d.key]) > 0) && (
+                              <div style={{display:'flex',gap:4,marginTop:3,marginLeft:90,flexWrap:'wrap',alignItems:'center'}}>
+                                {INJECT_PRESETS.map(p => (
+                                  <button key={p.key} onClick={() => setDrugTime(d.key, p.getTime())}
+                                    style={{background:'var(--card2)',border:'1px solid var(--border)',borderRadius:12,padding:'3px 8px',
+                                      color:'var(--text2)',fontSize:'0.68em',cursor:'pointer',whiteSpace:'nowrap'}}>
+                                    {p.icon} {p.label}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
           );
-        })}
+        })()}
       </div>
 
       {/* Injection Site Rotation */}
@@ -2919,10 +3098,14 @@ function SmartPage({ data, updateData, selectedDate }) {
     localStorage.setItem('blood_work', JSON.stringify(bw));
   };
 
-  // PK Chart
+  // Per-drug PK charts
+  const drugPkChartRef = useRef(null);
+  const drugPkChart = useRef(null);
+
+  // PK Chart - Total + E2
   useEffect(() => {
-    const levels = calcPKLevels(data, 21);
-    const validLevels = levels.filter(l => l.totalT > 0 || levels.indexOf(l) > levels.length - 22);
+    const levels = calcPKLevels(data, 28);
+    const validLevels = levels.filter(l => l.totalT > 0 || levels.indexOf(l) > levels.length - 29);
     if (!validLevels.length || !pkChartRef.current) return;
 
     if (pkChart.current) pkChart.current.destroy();
@@ -2932,33 +3115,28 @@ function SmartPage({ data, updateData, selectedDate }) {
       data: validLevels.map(l => l.totalT),
       borderColor: '#60a5fa',
       backgroundColor: '#60a5fa22',
-      fill: true, tension: 0.4, pointRadius: 2, yAxisID: 'y'
+      fill: true, tension: 0.4, pointRadius: 2, borderWidth: 2, yAxisID: 'y'
     }, {
       label: 'E2 貢獻指數',
       data: validLevels.map(l => l.e2),
       borderColor: '#f472b6',
       backgroundColor: '#f472b622',
-      fill: true, tension: 0.4, pointRadius: 2, yAxisID: 'y1'
+      fill: true, tension: 0.4, pointRadius: 2, borderWidth: 2, yAxisID: 'y1'
     }];
 
-    // Add individual drug lines
-    DRUGS.filter(d => d.pk).forEach(drug => {
-      const hasData = validLevels.some(l => (l.byDrug[drug.key] || 0) > 0.1);
-      if (!hasData) return;
-      datasets.push({
-        label: drug.label,
-        data: validLevels.map(l => l.byDrug[drug.key] || 0),
-        borderColor: drug.color,
-        borderDash: [4, 4],
-        tension: 0.4, pointRadius: 0, borderWidth: 1, hidden: true
-      });
-    });
-
-    // Mark injection days
-    const injDates = validLevels.filter(l => {
+    // Mark injection points on total T line
+    const pointStyles = validLevels.map(l => {
       const e = data[l.date];
-      return e && Object.entries(e.drugs || {}).some(([k,v]) => v > 0 && DRUGS.find(d=>d.key===k)?.pk);
-    }).map(l => l.date);
+      if (e && Object.entries(e.drugs || {}).some(([k,v]) => v > 0 && DRUGS.find(d=>d.key===k)?.pk)) return 'triangle';
+      return 'circle';
+    });
+    const pointSizes = validLevels.map(l => {
+      const e = data[l.date];
+      if (e && Object.entries(e.drugs || {}).some(([k,v]) => v > 0 && DRUGS.find(d=>d.key===k)?.pk)) return 6;
+      return 2;
+    });
+    datasets[0].pointStyle = pointStyles;
+    datasets[0].pointRadius = pointSizes;
 
     pkChart.current = new Chart(pkChartRef.current, {
       type: 'line',
@@ -2967,17 +3145,110 @@ function SmartPage({ data, updateData, selectedDate }) {
         responsive: true, maintainAspectRatio: false,
         plugins: {
           legend: { labels: { color: '#ccc', font: { size: 9 } } },
-          annotation: injDates.length ? undefined : undefined // placeholder
+          tooltip: {
+            callbacks: {
+              afterBody: (ctx) => {
+                const idx = ctx[0]?.dataIndex;
+                if (idx === undefined) return '';
+                const l = validLevels[idx];
+                const e = data[l.date];
+                if (!e?.drugs) return '';
+                const injections = Object.entries(e.drugs).filter(([k,v]) => v > 0 && DRUGS.find(d=>d.key===k)?.pk);
+                if (!injections.length) return '';
+                return '\n💉 當日注射:\n' + injections.map(([k,v]) => {
+                  const d = DRUGS.find(x=>x.key===k);
+                  return `  ${d?.label||k}: ${v} ${d?.unit||''}`;
+                }).join('\n');
+              }
+            }
+          }
         },
         scales: {
           x: { ticks: { color: '#888', maxTicksLimit: 10 }, grid: { color: '#222' } },
-          y: { title: { display: true, text: 'T (mg)', color: '#60a5fa' }, ticks: { color: '#60a5fa' }, grid: { color: '#222' } },
+          y: { title: { display: true, text: '活性 T (mg)', color: '#60a5fa' }, ticks: { color: '#60a5fa' }, grid: { color: '#222' } },
           y1: { position: 'right', title: { display: true, text: 'E2 指數', color: '#f472b6' }, ticks: { color: '#f472b6' }, grid: { display: false } }
         }
       }
     });
 
     return () => { if (pkChart.current) pkChart.current.destroy(); };
+  }, [data]);
+
+  // Per-Drug PK concentration chart
+  useEffect(() => {
+    const levels = calcPKLevels(data, 28);
+    const validLevels = levels.filter(l => {
+      const anyDrug = Object.values(l.byDrug).some(v => v > 0.01);
+      return anyDrug || levels.indexOf(l) > levels.length - 29;
+    });
+    if (!validLevels.length || !drugPkChartRef.current) return;
+    if (drugPkChart.current) drugPkChart.current.destroy();
+
+    // Find all drugs that have PK data in this range
+    const activeDrugs = DRUGS.filter(d => d.pk && validLevels.some(l => (l.byDrug[d.key] || 0) > 0.01));
+    if (!activeDrugs.length) return;
+
+    const datasets = activeDrugs.map(drug => ({
+      label: drug.label,
+      data: validLevels.map(l => Math.round((l.byDrug[drug.key] || 0) * 100) / 100),
+      borderColor: drug.color,
+      backgroundColor: drug.color + '18',
+      fill: true,
+      tension: 0.4,
+      pointRadius: validLevels.map(l => {
+        const e = data[l.date];
+        if (e?.drugs?.[drug.key] > 0) return 5;
+        return 0;
+      }),
+      pointStyle: validLevels.map(l => {
+        const e = data[l.date];
+        if (e?.drugs?.[drug.key] > 0) return 'triangle';
+        return 'circle';
+      }),
+      pointBackgroundColor: drug.color,
+      borderWidth: 2
+    }));
+
+    drugPkChart.current = new Chart(drugPkChartRef.current, {
+      type: 'line',
+      data: { labels: validLevels.map(l => l.date.slice(5)), datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { color: '#ccc', font: { size: 9 } } },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => {
+                const drug = activeDrugs[ctx.datasetIndex];
+                const val = ctx.parsed.y;
+                return `${drug.label}: ${val.toFixed(2)} mg (體內殘餘)`;
+              },
+              afterBody: (ctx) => {
+                const idx = ctx[0]?.dataIndex;
+                if (idx === undefined) return '';
+                const l = validLevels[idx];
+                const halfLifeInfo = activeDrugs.filter(d => (l.byDrug[d.key]||0) > 0.01).map(d => {
+                  const hl = d.pk.esters ? d.pk.esters.map(e => e.halfLife + '天').join('/') : d.pk.halfLife + '天';
+                  return `  ${d.label} 半衰期: ${hl}`;
+                });
+                return halfLifeInfo.length ? '\n📊 半衰期:\n' + halfLifeInfo.join('\n') : '';
+              }
+            }
+          }
+        },
+        scales: {
+          x: { ticks: { color: '#888', maxTicksLimit: 10 }, grid: { color: '#222' } },
+          y: {
+            title: { display: true, text: '體內殘餘量 (mg)', color: '#ccc' },
+            ticks: { color: '#888' }, grid: { color: '#222' },
+            beginAtZero: true
+          }
+        },
+        interaction: { mode: 'index', intersect: false }
+      }
+    });
+
+    return () => { if (drugPkChart.current) drugPkChart.current.destroy(); };
   }, [data]);
 
   // Weight chart
@@ -3031,13 +3302,38 @@ function SmartPage({ data, updateData, selectedDate }) {
 
   return (
     <div className="page">
-      {/* Pharmacokinetic Curve */}
+      {/* Pharmacokinetic Curve - Total */}
       <div className="card">
-        <h3>💉 藥物動力學曲線</h3>
-        <p style={{fontSize:'0.78em',color:'var(--text2)',marginBottom:8}}>根據注射紀錄，預估體內睾酮和 E2 濃度變化</p>
+        <h3>💉 藥物動力學曲線 — 總覽</h3>
+        <p style={{fontSize:'0.78em',color:'var(--text2)',marginBottom:8}}>根據注射紀錄與半衰期，預估體內睾酮和 E2 濃度變化（▲ = 注射日）</p>
         <div className="chart-container"><canvas ref={pkChartRef}></canvas></div>
         <div style={{fontSize:'0.7em',color:'var(--text2)',marginTop:6}}>
           * 預估值僅供參考，實際血濃度受個體代謝、SHBG、注射深度等因素影響
+        </div>
+      </div>
+
+      {/* Per-Drug Blood Concentration */}
+      <div className="card">
+        <h3>🧪 各藥物血中濃度曲線</h3>
+        <p style={{fontSize:'0.78em',color:'var(--text2)',marginBottom:8}}>
+          每種藥物根據其半衰期計算的體內殘餘量，▲ = 該藥注射日
+        </p>
+        <div className="chart-container" style={{height:320}}><canvas ref={drugPkChartRef}></canvas></div>
+        <div style={{marginTop:8}}>
+          {DRUGS.filter(d => d.pk).map(d => {
+            const hl = d.pk.esters
+              ? d.pk.esters.map(e => `${e.mg}mg×${e.halfLife}天`).join(' + ')
+              : `半衰期 ${d.pk.halfLife} 天`;
+            const hasUsage = Object.values(data).some(e => e?.drugs?.[d.key] > 0);
+            if (!hasUsage) return null;
+            return (
+              <div key={d.key} style={{display:'flex',alignItems:'center',gap:6,fontSize:'0.7em',padding:'2px 0'}}>
+                <span style={{width:8,height:8,borderRadius:'50%',background:d.color,flexShrink:0}}></span>
+                <span style={{color:d.color,minWidth:90}}>{d.label}</span>
+                <span style={{color:'var(--text2)'}}>{hl}</span>
+              </div>
+            );
+          })}
         </div>
       </div>
 
