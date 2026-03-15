@@ -642,11 +642,24 @@ const FIREBASE_CONFIG_KEY = 'firebase_config';
 const FIREBASE_UID_KEY = 'firebase_uid';
 let _firestore = null;
 
+// Pre-configured Firebase (auto-setup)
+const DEFAULT_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDPVjTw29zKXuHrAr-89NHnkqBf3KS6Rz4",
+  authDomain: "steroid-tracker.firebaseapp.com",
+  projectId: "steroid-tracker",
+  storageBucket: "steroid-tracker.firebasestorage.app",
+  messagingSenderId: "708492561799",
+  appId: "1:708492561799:web:f0ca6f513c7f56328f5722"
+};
+
 const getFirebaseConfig = () => {
-  try { return JSON.parse(localStorage.getItem(FIREBASE_CONFIG_KEY)); } catch { return null; }
+  try {
+    const saved = JSON.parse(localStorage.getItem(FIREBASE_CONFIG_KEY));
+    return saved || DEFAULT_FIREBASE_CONFIG;
+  } catch { return DEFAULT_FIREBASE_CONFIG; }
 };
 const saveFirebaseConfig = (config) => localStorage.setItem(FIREBASE_CONFIG_KEY, JSON.stringify(config));
-const getFirebaseUID = () => localStorage.getItem(FIREBASE_UID_KEY) || '';
+const getFirebaseUID = () => localStorage.getItem(FIREBASE_UID_KEY) || 'dai';
 const saveFirebaseUID = (uid) => localStorage.setItem(FIREBASE_UID_KEY, uid);
 
 const initFirebase = (config) => {
