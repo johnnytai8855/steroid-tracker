@@ -14,6 +14,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <style>
 /* === 日式北歐 Japandi Theme === */
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;600;700&display=swap');
@@ -634,6 +636,149 @@ const loadData = () => {
   try { return JSON.parse(localStorage.getItem('steroid_tracker') || '{}'); } catch { return {}; }
 };
 const saveData = data => localStorage.setItem('steroid_tracker', JSON.stringify(data));
+
+// === Firebase Cloud Sync ===
+const FIREBASE_CONFIG_KEY = 'firebase_config';
+const FIREBASE_UID_KEY = 'firebase_uid';
+let _firestore = null;
+
+const getFirebaseConfig = () => {
+  try { return JSON.parse(localStorage.getItem(FIREBASE_CONFIG_KEY)); } catch { return null; }
+};
+const saveFirebaseConfig = (config) => localStorage.setItem(FIREBASE_CONFIG_KEY, JSON.stringify(config));
+const getFirebaseUID = () => localStorage.getItem(FIREBASE_UID_KEY) || '';
+const saveFirebaseUID = (uid) => localStorage.setItem(FIREBASE_UID_KEY, uid);
+
+const initFirebase = (config) => {
+  try {
+    if (firebase.apps.length) firebase.app().delete().then(() => {});
+    // Re-check: if app already exists after delete attempt, use it
+    let app;
+    try { app = firebase.app(); } catch { app = firebase.initializeApp(config); }
+    _firestore = firebase.firestore();
+    return true;
+  } catch (e) { console.error('Firebase init error:', e); return false; }
+};
+
+const cloudBackup = async (uid, data) => {
+  if (!_firestore || !uid) throw new Error('未連線雲端');
+  const docRef = _firestore.collection('users').doc(uid);
+  
+  // Split data into chunks if too large (Firestore 1MB limit)
+  const jsonStr = JSON.stringify(data);
+  const sizeMB = new Blob([jsonStr]).size / 1024 / 1024;
+  
+  if (sizeMB > 0.8) {
+    // Split by date ranges
+    const dates = Object.keys(data).sort();
+    const chunkSize = Math.ceil(dates.length / Math.ceil(sizeMB / 0.5));
+    const chunks = [];
+    for (let i = 0; i < dates.length; i += chunkSize) {
+      const chunkDates = dates.slice(i, i + chunkSize);
+      const chunk = {};
+      chunkDates.forEach(d => chunk[d] = data[d]);
+      chunks.push(chunk);
+    }
+    // Save chunks
+    const batch = _firestore.batch();
+    batch.set(docRef, { 
+      chunks: chunks.length, 
+      totalDays: dates.length,
+      lastBackup: new Date().toISOString(),
+      version: 'v8.1'
+    });
+    chunks.forEach((chunk, i) => {
+      batch.set(docRef.collection('chunks').doc(`chunk_${i}`), { data: JSON.stringify(chunk) });
+    });
+    await batch.commit();
+  } else {
+    await docRef.set({
+      data: jsonStr,
+      chunks: 0,
+      totalDays: Object.keys(data).length,
+      lastBackup: new Date().toISOString(),
+      version: 'v8.1'
+    });
+  }
+  
+  // Also backup protocol & blood work & calibration
+  const meta = {};
+  ['daily_protocol', 'blood_work', 'drug_calibration'].forEach(k => {
+    const v = localStorage.getItem(k);
+    if (v) meta[k] = v;
+  });
+  if (Object.keys(meta).length) {
+    await docRef.collection('meta').doc('settings').set(meta);
+  }
+  
+  return { totalDays: Object.keys(data).length, sizeMB: sizeMB.toFixed(2) };
+};
+
+const cloudRestore = async (uid) => {
+  if (!_firestore || !uid) throw new Error('未連線雲端');
+  const docRef = _firestore.collection('users').doc(uid);
+  const doc = await docRef.get();
+  if (!doc.exists) throw new Error('雲端無此帳號的備份');
+  
+  const docData = doc.data();
+  let restored = {};
+  
+  if (docData.chunks > 0) {
+    // Restore from chunks
+    for (let i = 0; i < docData.chunks; i++) {
+      const chunkDoc = await docRef.collection('chunks').doc(`chunk_${i}`).get();
+      if (chunkDoc.exists) {
+        const chunk = JSON.parse(chunkDoc.data().data);
+        Object.assign(restored, chunk);
+      }
+    }
+  } else if (docData.data) {
+    restored = JSON.parse(docData.data);
+  }
+  
+  // Restore meta (protocol, blood work, calibration)
+  try {
+    const metaDoc = await docRef.collection('meta').doc('settings').get();
+    if (metaDoc.exists) {
+      const meta = metaDoc.data();
+      Object.entries(meta).forEach(([k, v]) => localStorage.setItem(k, v));
+    }
+  } catch (e) { console.warn('Meta restore warning:', e); }
+  
+  return { data: restored, lastBackup: docData.lastBackup, totalDays: docData.totalDays };
+};
+
+const cloudBackupPhotos = async (uid) => {
+  if (!_firestore || !uid) throw new Error('未連線雲端');
+  const photos = await getAllPhotos();
+  const keys = Object.keys(photos);
+  if (!keys.length) return { count: 0 };
+  
+  const docRef = _firestore.collection('users').doc(uid).collection('photos');
+  // Upload in batches of 5 (each photo can be large)
+  for (let i = 0; i < keys.length; i += 5) {
+    const batch = _firestore.batch();
+    keys.slice(i, i + 5).forEach(k => {
+      batch.set(docRef.doc(k.replace(/\//g, '_')), { key: k, data: photos[k] });
+    });
+    await batch.commit();
+  }
+  return { count: keys.length };
+};
+
+const cloudRestorePhotos = async (uid) => {
+  if (!_firestore || !uid) throw new Error('未連線雲端');
+  const snapshot = await _firestore.collection('users').doc(uid).collection('photos').get();
+  if (snapshot.empty) return { count: 0 };
+  
+  const photos = {};
+  snapshot.forEach(doc => {
+    const d = doc.data();
+    photos[d.key] = d.data;
+  });
+  const count = await importPhotos(photos);
+  return { count };
+};
 
 // === IndexedDB Photo Storage (persistent, large capacity) ===
 const DB_NAME = 'steroid_photos';
@@ -4126,6 +4271,216 @@ function PhotoTimelinePage({ data, type, setTab }) {
   );
 }
 
+
+// === Cloud Sync Component ===
+function CloudSyncPanel({ data, updateData }) {
+  const [config, setConfig] = useState(() => getFirebaseConfig() || { apiKey:'', projectId:'', appId:'' });
+  const [uid, setUid] = useState(getFirebaseUID);
+  const [connected, setConnected] = useState(false);
+  const [status, setStatus] = useState('');
+  const [showSetup, setShowSetup] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [lastBackup, setLastBackup] = useState('');
+
+  // Auto-connect if config exists
+  useEffect(() => {
+    const saved = getFirebaseConfig();
+    if (saved?.apiKey && saved?.projectId) {
+      const ok = initFirebase(saved);
+      setConnected(ok);
+      if (ok) setStatus('✓ 已連線');
+    }
+  }, []);
+
+  const handleConnect = () => {
+    if (!config.apiKey || !config.projectId) {
+      setStatus('✗ 請填入 API Key 和 Project ID');
+      return;
+    }
+    const fullConfig = {
+      apiKey: config.apiKey,
+      authDomain: `${config.projectId}.firebaseapp.com`,
+      projectId: config.projectId,
+      storageBucket: `${config.projectId}.appspot.com`,
+      appId: config.appId || 'default'
+    };
+    const ok = initFirebase(fullConfig);
+    if (ok) {
+      saveFirebaseConfig(fullConfig);
+      setConnected(true);
+      setStatus('✓ 連線成功！');
+    } else {
+      setStatus('✗ 連線失敗，請檢查設定');
+    }
+  };
+
+  const handleBackup = async () => {
+    if (!uid.trim()) { setStatus('✗ 請輸入你的識別碼'); return; }
+    setSyncing(true);
+    setStatus('⏳ 上傳中...');
+    try {
+      saveFirebaseUID(uid.trim());
+      const result = await cloudBackup(uid.trim(), data);
+      setLastBackup(new Date().toLocaleString('zh-TW'));
+      setStatus(`✓ 備份成功！${result.totalDays} 天紀錄（${result.sizeMB}MB）`);
+    } catch (e) {
+      setStatus('✗ 備份失敗: ' + e.message);
+    }
+    setSyncing(false);
+  };
+
+  const handleRestore = async () => {
+    if (!uid.trim()) { setStatus('✗ 請輸入你的識別碼'); return; }
+    if (!window.confirm('從雲端還原會合併現有資料，確定繼續？')) return;
+    setSyncing(true);
+    setStatus('⏳ 下載中...');
+    try {
+      saveFirebaseUID(uid.trim());
+      const result = await cloudRestore(uid.trim());
+      const merged = { ...data, ...result.data };
+      updateData(merged);
+      setLastBackup(result.lastBackup ? new Date(result.lastBackup).toLocaleString('zh-TW') : '');
+      setStatus(`✓ 還原成功！合併後共 ${Object.keys(merged).length} 天紀錄`);
+    } catch (e) {
+      setStatus('✗ 還原失敗: ' + e.message);
+    }
+    setSyncing(false);
+  };
+
+  const handlePhotoBackup = async () => {
+    if (!uid.trim()) { setStatus('✗ 請輸入你的識別碼'); return; }
+    setSyncing(true);
+    setStatus('⏳ 上傳照片中（可能需要較長時間）...');
+    try {
+      saveFirebaseUID(uid.trim());
+      const result = await cloudBackupPhotos(uid.trim());
+      setStatus(result.count ? `✓ 已備份 ${result.count} 張照片` : '沒有照片需要備份');
+    } catch (e) {
+      setStatus('✗ 照片備份失敗: ' + e.message);
+    }
+    setSyncing(false);
+  };
+
+  const handlePhotoRestore = async () => {
+    if (!uid.trim()) { setStatus('✗ 請輸入你的識別碼'); return; }
+    setSyncing(true);
+    setStatus('⏳ 下載照片中...');
+    try {
+      saveFirebaseUID(uid.trim());
+      const result = await cloudRestorePhotos(uid.trim());
+      setStatus(result.count ? `✓ 已還原 ${result.count} 張照片` : '雲端無照片備份');
+    } catch (e) {
+      setStatus('✗ 照片還原失敗: ' + e.message);
+    }
+    setSyncing(false);
+  };
+
+  return (
+    <div className="card" style={{border:'1px solid var(--blue)'}}>
+      <h3 style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        ☁️ 雲端備份
+        <span style={{fontSize:'0.7em',fontWeight:400,color: connected ? 'var(--green)' : 'var(--text2)'}}>
+          {connected ? '● 已連線' : '○ 未連線'}
+        </span>
+      </h3>
+
+      {!connected && (
+        <div style={{marginBottom:12}}>
+          <p style={{fontSize:'0.82em',color:'var(--text2)',marginBottom:10,lineHeight:1.6}}>
+            使用 Firebase 免費方案備份資料到雲端，更新 App 不再遺失資料。
+          </p>
+          <button className="action-btn" style={{marginBottom:8}} onClick={() => setShowSetup(!showSetup)}>
+            {showSetup ? '收起設定' : '⚙️ 設定 Firebase 連線'}
+          </button>
+          
+          {showSetup && (
+            <div style={{background:'var(--card2)',borderRadius:10,padding:12,fontSize:'0.82em'}}>
+              <p style={{color:'var(--text2)',marginBottom:10,lineHeight:1.8}}>
+                <b>一次性設定（3分鐘）：</b><br/>
+                1. 前往 <a href="https://console.firebase.google.com" target="_blank" style={{color:'var(--blue)'}}>console.firebase.google.com</a><br/>
+                2. 建立新專案（名稱隨意）<br/>
+                3. 左側選「Firestore Database」→ 建立資料庫 → 選「測試模式」<br/>
+                4. 專案設定（⚙️）→ 一般 → 往下找到「你的應用程式」→ 新增 Web 應用 → 複製設定
+              </p>
+              <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                <div>
+                  <label style={{fontSize:'0.85em',color:'var(--text2)'}}>API Key</label>
+                  <input className="drug-input" value={config.apiKey} 
+                    onChange={e => setConfig({...config, apiKey: e.target.value})}
+                    placeholder="AIzaSy..." style={{fontSize:'0.85em'}} />
+                </div>
+                <div>
+                  <label style={{fontSize:'0.85em',color:'var(--text2)'}}>Project ID</label>
+                  <input className="drug-input" value={config.projectId}
+                    onChange={e => setConfig({...config, projectId: e.target.value})}
+                    placeholder="my-tracker-xxxxx" style={{fontSize:'0.85em'}} />
+                </div>
+                <div>
+                  <label style={{fontSize:'0.85em',color:'var(--text2)'}}>App ID（選填）</label>
+                  <input className="drug-input" value={config.appId}
+                    onChange={e => setConfig({...config, appId: e.target.value})}
+                    placeholder="1:xxx:web:xxx" style={{fontSize:'0.85em'}} />
+                </div>
+                <button className="save-btn" onClick={handleConnect}>連線 Firebase</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {connected && (
+        <div>
+          <div style={{marginBottom:12}}>
+            <label style={{fontSize:'0.82em',color:'var(--text2)',display:'block',marginBottom:4}}>你的識別碼（自訂，用來識別你的資料）</label>
+            <input className="drug-input" value={uid} onChange={e => setUid(e.target.value)}
+              placeholder="例如：dai 或你的 email" style={{fontSize:'0.9em'}} />
+          </div>
+
+          <div style={{display:'flex',gap:8,marginBottom:8}}>
+            <button className="action-btn" style={{flex:1,margin:0,background:'var(--blue)',color:'#fff',fontWeight:600,opacity:syncing?0.5:1}} 
+              disabled={syncing} onClick={handleBackup}>
+              ⬆️ 上傳備份
+            </button>
+            <button className="action-btn" style={{flex:1,margin:0}} disabled={syncing} onClick={handleRestore}>
+              ⬇️ 下載還原
+            </button>
+          </div>
+
+          <div style={{display:'flex',gap:8,marginBottom:8}}>
+            <button className="action-btn" style={{flex:1,margin:0,fontSize:'0.8em'}} disabled={syncing} onClick={handlePhotoBackup}>
+              📸 備份照片
+            </button>
+            <button className="action-btn" style={{flex:1,margin:0,fontSize:'0.8em'}} disabled={syncing} onClick={handlePhotoRestore}>
+              📸 還原照片
+            </button>
+          </div>
+
+          {lastBackup && (
+            <p style={{fontSize:'0.78em',color:'var(--text2)',marginBottom:4}}>上次備份：{lastBackup}</p>
+          )}
+
+          <button style={{background:'none',border:'none',color:'var(--text2)',fontSize:'0.75em',cursor:'pointer',padding:'4px 0',textDecoration:'underline'}} 
+            onClick={() => { 
+              localStorage.removeItem(FIREBASE_CONFIG_KEY); 
+              localStorage.removeItem(FIREBASE_UID_KEY);
+              _firestore = null; setConnected(false); setStatus('已斷開連線'); 
+            }}>
+            斷開連線 / 重新設定
+          </button>
+        </div>
+      )}
+
+      {status && (
+        <p style={{
+          marginTop:8, fontSize:'0.85em', padding:'8px 12px', borderRadius:8,
+          background: status.startsWith('✓') ? 'rgba(122,158,142,0.12)' : status.startsWith('✗') ? 'rgba(184,92,92,0.12)' : 'rgba(107,127,153,0.08)',
+          color: status.startsWith('✓') ? 'var(--green)' : status.startsWith('✗') ? 'var(--red)' : 'var(--blue)'
+        }}>{status}</p>
+      )}
+    </div>
+  );
+}
+
 function MorePage({ data, updateData }) {
   const [importStatus, setImportStatus] = useState('');
   const fileRef = useRef(null);
@@ -4196,6 +4551,8 @@ function MorePage({ data, updateData }) {
         <button className="action-btn" onClick={exportCSV}>匯出 CSV（可用 Excel 開啟）</button>
       </div>
 
+      <CloudSyncPanel data={data} updateData={updateData} />
+
       <div className="card">
         <h3>📥 匯入資料</h3>
         <button className="action-btn" onClick={() => fileRef.current?.click()}>選擇 JSON 檔案匯入</button>
@@ -4207,8 +4564,8 @@ function MorePage({ data, updateData }) {
         <h3>ℹ️ 資料統計</h3>
         <p style={{fontSize:'0.9em'}}>
           目前共有 <b style={{color:'var(--blue)'}}>{totalDays}</b> 天紀錄<br/>
-          資料儲存於瀏覽器本機，不會上傳至任何伺服器。<br/>
-          建議定期匯出 JSON 備份。
+          資料儲存於瀏覽器本機。可透過上方雲端備份同步到 Firebase。<br/>
+          建議定期備份，避免更新時遺失資料。
         </p>
       </div>
 
@@ -4268,7 +4625,7 @@ function MorePage({ data, updateData }) {
       <AutoSleepImport data={data} updateData={updateData} />
 
       <div className="card" style={{fontSize:'0.78em',color:'var(--text2)'}}>
-        用藥追蹤 App v8.0<br/>
+        用藥追蹤 App v8.1 — 雲端備份<br/>
         本工具僅供個人紀錄用途，不構成醫療建議。
       </div>
     </div>
