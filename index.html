@@ -202,6 +202,23 @@ body{font-family:-apple-system,'Segoe UI',system-ui,sans-serif;background:var(--
 .drug-cat-header{display:flex;align-items:center;justify-content:space-between;padding:8px 0;cursor:pointer;border-bottom:1px solid var(--border);margin-bottom:8px}
 .drug-cat-header h4{font-size:0.85em;margin:0}
 .drug-cat-toggle{color:var(--text2);font-size:0.8em}
+/* Check-in scales */
+.checkin-card{background:var(--card);border-radius:var(--radius);padding:16px;margin-bottom:14px;border:1px solid var(--border)}
+.checkin-card.morning{border-left:3px solid var(--orange)}
+.checkin-card.evening{border-left:3px solid var(--purple)}
+.checkin-item{margin-bottom:14px}
+.checkin-label{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.checkin-label .cl-name{font-size:0.88em;color:var(--text)}
+.checkin-label .cl-value{font-size:0.85em;font-weight:700;min-width:50px;text-align:right}
+.checkin-label .cl-hint{font-size:0.65em;color:var(--text2)}
+.score-btns{display:flex;gap:4px}
+.score-btn{flex:1;padding:8px 2px;border-radius:8px;border:1px solid var(--border);background:var(--card2);color:var(--text2);font-size:0.82em;cursor:pointer;text-align:center;transition:all 0.15s;min-width:0}
+.score-btn.active{color:#fff;border-color:transparent;font-weight:600}
+.checkin-indicator{display:flex;justify-content:space-between;font-size:0.6em;color:var(--text2);margin-top:2px;padding:0 2px}
+/* Ad-hoc symptoms toggle */
+.adhoc-header{display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:10px 0}
+.adhoc-header h3{font-size:0.9em;margin:0}
+.adhoc-count{background:var(--red);color:#fff;border-radius:10px;padding:0 7px;font-size:0.75em;margin-left:6px}
 </style>
 </head>
 <body>
@@ -436,6 +453,78 @@ const TIME_PERIODS = [
   { key: 'afternoon', label: '下午' },
   { key: 'evening', label: '晚上' },
   { key: 'midnight', label: '半夜' },
+];
+
+// === Structured Daily Check-in Scales ===
+// These are quantifiable 0-5 scores tracked daily for dose-response correlation
+const MORNING_CHECKIN = [
+  { key: 'morning_erection', label: '晨勃強度', icon: '🍆',
+    levels: ['無', '微弱', '一般', '明顯', '很強', '超硬'],
+    significance: 'E2/T平衡的最佳指標。持續無晨勃=E2失衡或T不足',
+    colors: ['#ef4444','#fb923c','#fbbf24','#a3e635','#34d399','#22d3ee'] },
+  { key: 'energy_wakeup', label: '起床精神', icon: '⚡',
+    levels: ['極差', '疲累', '普通', '不錯', '精神好', '滿血復活'],
+    significance: '反映睡眠品質+T水平。持續疲累=可能E2偏高或T波谷',
+    colors: ['#ef4444','#fb923c','#fbbf24','#a3e635','#34d399','#22d3ee'] },
+  { key: 'face_puffiness', label: '臉部水腫感', icon: '💧',
+    levels: ['完全乾爽','幾乎沒有','輕微','明顯','很腫','嚴重'],
+    significance: 'E2偏高的早期信號。注射後2-3天最明顯',
+    colors: ['#22d3ee','#34d399','#a3e635','#fbbf24','#fb923c','#ef4444'] },
+  { key: 'joint_feel', label: '關節感覺', icon: '🦴',
+    levels: ['很乾/卡','偏乾','普通','滑順','很舒服','超潤滑'],
+    significance: 'E2過低=關節乾卡。AI用太多的警告指標',
+    colors: ['#ef4444','#fb923c','#fbbf24','#a3e635','#34d399','#22d3ee'] },
+  { key: 'skin_oil', label: '皮膚出油', icon: '💆',
+    levels: ['完全乾','偏乾','正常','偏油','很油','爆油'],
+    significance: 'DHT活性指標。出油增加=雄性激素活性高',
+    colors: ['#60a5fa','#34d399','#a3e635','#fbbf24','#fb923c','#ef4444'] },
+];
+
+const EVENING_CHECKIN = [
+  { key: 'overall_energy', label: '今日整體精力', icon: '🔋',
+    levels: ['極差','低落','普通','不錯','充沛','爆發'],
+    significance: '綜合反映T水平和睡眠恢復品質',
+    colors: ['#ef4444','#fb923c','#fbbf24','#a3e635','#34d399','#22d3ee'] },
+  { key: 'libido_level', label: '性慾程度', icon: '🔥',
+    levels: ['完全無','很低','普通','偏高','很強','爆棚'],
+    significance: 'E2+T平衡的綜合指標。E2過高或過低都會降低',
+    colors: ['#ef4444','#fb923c','#fbbf24','#a3e635','#34d399','#22d3ee'] },
+  { key: 'mood_stability', label: '情緒穩定度', icon: '🧠',
+    levels: ['很暴躁','易怒','偏波動','穩定','很好','極佳'],
+    significance: 'E2波動大=情緒不穩。頻率注射可改善',
+    colors: ['#ef4444','#fb923c','#fbbf24','#a3e635','#34d399','#22d3ee'] },
+  { key: 'workout_perf', label: '訓練表現', icon: '🏋️',
+    levels: ['沒練','很差','普通','不錯','很強','破紀錄'],
+    significance: '反映T水平和恢復品質。注意0=沒練不是差',
+    colors: ['#666','#fb923c','#fbbf24','#a3e635','#34d399','#22d3ee'] },
+  { key: 'body_temp', label: '體溫感覺', icon: '🌡️',
+    levels: ['發冷','偏冷','正常','偏熱','很熱','發燒感'],
+    significance: 'Tren會升高體溫。異常升高注意肝臟',
+    colors: ['#60a5fa','#93c5fd','#a3e635','#fbbf24','#fb923c','#ef4444'] },
+];
+
+// Ad-hoc notable symptoms (binary, only log when present)
+const ADHOC_SYMPTOMS = [
+  { key: 'nipple_sens', label: '乳頭敏感', icon: '⚠️', severity: 'high', hint: 'E2偏高信號，考慮AI' },
+  { key: 'gyno_lump', label: '胸部硬塊', icon: '🚨', severity: 'critical', hint: '立即考慮SERM+AI' },
+  { key: 'acne_breakout', label: '爆痘', icon: '😤', severity: 'medium', hint: 'DHT活性高或荷爾蒙波動' },
+  { key: 'hair_shedding', label: '掉髮增加', icon: '💇', severity: 'medium', hint: 'DHT偏高，考慮降劑量或加Finasteride' },
+  { key: 'night_sweats', label: '夜間盜汗', icon: '💦', severity: 'medium', hint: '常見於Tren/19-Nor。也可能E2相關' },
+  { key: 'insomnia', label: '失眠', icon: '😵', severity: 'medium', hint: '可能E2偏高、Tren副作用、或訓練過度' },
+  { key: 'headache', label: '頭痛', icon: '🤕', severity: 'medium', hint: '注意血壓。HCT偏高也會' },
+  { key: 'bp_high_feel', label: '血壓偏高感', icon: '❤️‍🔥', severity: 'high', hint: '立即量血壓。HCT>52%需捐血' },
+  { key: 'shortness_breath', label: '喘/呼吸困難', icon: '😮‍💨', severity: 'critical', hint: 'HCT可能過高，立即抽血檢查' },
+  { key: 'heart_palp', label: '心悸', icon: '💓', severity: 'high', hint: '注意HCT和血壓。考慮減劑量' },
+  { key: 'bloating', label: '腹脹/水腫', icon: '🫃', severity: 'low', hint: 'E2偏高造成鈉水滯留' },
+  { key: 'mood_swing', label: '情緒大起大落', icon: '🎭', severity: 'medium', hint: '荷爾蒙波動大，考慮增加注射頻率' },
+  { key: 'brain_fog', label: '腦霧', icon: '🌫️', severity: 'medium', hint: 'E2過高或過低都會。也查甲狀腺' },
+  { key: 'shin_pump', label: '小腿泵感', icon: '🦵', severity: 'low', hint: '口服類固醇常見副作用' },
+  { key: 'back_pump', label: '下背泵感', icon: '🔙', severity: 'low', hint: '口服類固醇常見，補充Taurine' },
+  { key: 'appetite_surge', label: '食慾暴增', icon: '🍖', severity: 'low', hint: 'Boldenone/Tren常見效果' },
+  { key: 'appetite_loss', label: '食慾下降', icon: '🤢', severity: 'medium', hint: '口服類固醇可能影響肝臟/胃' },
+  { key: 'dark_urine', label: '尿液深色', icon: '🟤', severity: 'high', hint: '肝臟壓力信號，考慮減口服劑量' },
+  { key: 'injection_pip', label: '注射處痛(PIP)', icon: '💉', severity: 'low', hint: '正常反應，通常2-3天消退' },
+  { key: 'numbness_tingling', label: '手腳麻', icon: '🖐️', severity: 'medium', hint: '可能水腫壓迫神經。查E2' },
 ];
 
 // === Injection Timing Presets & Missed Injection Helper ===
@@ -1133,8 +1222,53 @@ const generateBriefing = (data, selectedDate) => {
     items.push({ icon: '⚖️', text: `體重 ${latest}kg（${parseFloat(diff) >= 0 ? '+' : ''}${diff}kg 近${recentWeights.length}天）`, color: Math.abs(parseFloat(diff)) > 1 ? 'var(--orange)' : 'var(--text2)' });
   }
 
-  // 5. Recent symptom trend
+  // 5. Check-in score trends (new system)
   const recent3 = dates.filter(d => d <= selectedDate).slice(-3);
+  // Morning score trends
+  const morningTrends = {};
+  MORNING_CHECKIN.forEach(item => {
+    const vals = recent3.map(d => data[d]?.morningScores?.[item.key]).filter(v => v !== undefined);
+    if (vals.length >= 2) {
+      const avg = vals.reduce((s,v)=>s+v,0)/vals.length;
+      morningTrends[item.key] = avg;
+    }
+  });
+  if (morningTrends.morning_erection !== undefined && morningTrends.morning_erection < 2) {
+    items.push({ icon: '⚠️', text: `晨勃近3天平均偏低 (${morningTrends.morning_erection.toFixed(1)}/5) — 檢查 E2 平衡`, color: 'var(--orange)' });
+  }
+  if (morningTrends.face_puffiness !== undefined && morningTrends.face_puffiness > 3) {
+    items.push({ icon: '💧', text: `臉部水腫近3天偏高 (${morningTrends.face_puffiness.toFixed(1)}/5) — E2 可能偏高`, color: 'var(--orange)' });
+  }
+  if (morningTrends.joint_feel !== undefined && morningTrends.joint_feel < 2) {
+    items.push({ icon: '🦴', text: `關節偏乾卡 (${morningTrends.joint_feel.toFixed(1)}/5) — E2 可能太低，檢查 AI 用量`, color: 'var(--orange)' });
+  }
+  // Evening score trends
+  const eveningTrends = {};
+  EVENING_CHECKIN.forEach(item => {
+    const vals = recent3.map(d => data[d]?.eveningScores?.[item.key]).filter(v => v !== undefined);
+    if (vals.length >= 2) eveningTrends[item.key] = vals.reduce((s,v)=>s+v,0)/vals.length;
+  });
+  if (eveningTrends.libido_level !== undefined && eveningTrends.libido_level < 2) {
+    items.push({ icon: '🔥', text: `性慾近3天偏低 (${eveningTrends.libido_level.toFixed(1)}/5) — E2 失衡或 T 波谷`, color: 'var(--orange)' });
+  }
+  if (eveningTrends.mood_stability !== undefined && eveningTrends.mood_stability < 2) {
+    items.push({ icon: '🧠', text: `情緒不穩定 — 考慮增加注射頻率以減少波動`, color: 'var(--orange)' });
+  }
+
+  // Ad-hoc symptom trends
+  const adhocFreq = {};
+  recent3.forEach(d => {
+    (data[d]?.adhocSymptoms || []).forEach(s => { adhocFreq[s] = (adhocFreq[s]||0) + 1; });
+  });
+  const frequentAdhoc = Object.entries(adhocFreq).filter(([,c]) => c >= 2).map(([k]) => {
+    const s = ADHOC_SYMPTOMS.find(x => x.key === k);
+    return s ? s.label : k;
+  });
+  if (frequentAdhoc.length) {
+    items.push({ icon: '⚠️', text: `近3天反覆出現：${frequentAdhoc.join('、')}`, color: 'var(--red)' });
+  }
+
+  // Legacy symptom support
   const recentNeg = {};
   recent3.forEach(d => {
     flattenSymptoms(data[d]?.symptoms).forEach(s => {
@@ -1144,7 +1278,7 @@ const generateBriefing = (data, selectedDate) => {
   });
   const frequent = Object.entries(recentNeg).filter(([,c]) => c >= 2).map(([k]) => SYMPTOMS.find(s=>s.key===k)?.label).filter(Boolean);
   if (frequent.length) {
-    items.push({ icon: '⚠️', text: `近3天反覆出現：${frequent.join('、')}`, color: 'var(--red)' });
+    items.push({ icon: '📋', text: `舊版症狀紀錄：${frequent.join('、')}`, color: 'var(--text2)' });
   }
 
   return items;
@@ -1153,47 +1287,78 @@ const generateBriefing = (data, selectedDate) => {
 // === AI Dosage Suggestion ===
 const generateDoseSuggestion = (data) => {
   const dates = Object.keys(data).sort();
-  if (dates.length < 7) return null;
+  if (dates.length < 5) return null;
   const recent = dates.slice(-14);
   const suggestions = [];
 
-  // Count category symptoms
-  const catCounts = {};
-  SYMPTOM_CATEGORIES.forEach(c => { catCounts[c.key] = { pos: 0, neg: 0 }; });
-  recent.forEach(d => {
-    flattenSymptoms(data[d]?.symptoms).forEach(s => {
-      const sym = SYMPTOMS.find(x => x.key === s);
-      if (sym) { catCounts[sym.cat][sym.type === 'positive' ? 'pos' : 'neg']++; }
+  // === New check-in score analysis ===
+  const avgScores = (checkinKey, items) => {
+    const avgs = {};
+    items.forEach(item => {
+      const vals = recent.map(d => data[d]?.[checkinKey]?.[item.key]).filter(v => v !== undefined);
+      if (vals.length >= 3) avgs[item.key] = vals.reduce((s,v)=>s+v,0)/vals.length;
     });
+    return avgs;
+  };
+  const mAvg = avgScores('morningScores', MORNING_CHECKIN);
+  const eAvg = avgScores('eveningScores', EVENING_CHECKIN);
+
+  // E2 high signals: face puffy + morning erection low
+  if (mAvg.face_puffiness > 3 && mAvg.morning_erection < 2.5) {
+    suggestions.push({ type: 'warning', text: '🔴 E2 偏高信號（臉腫+晨勃差）— 考慮：增加注射頻率分散峰值、或酌量使用 AI' });
+  } else if (mAvg.face_puffiness > 3) {
+    suggestions.push({ type: 'warning', text: '💧 水腫明顯 — 可能 E2 偏高，注意飲水和鈉攝取。持續則考慮 AI' });
+  }
+
+  // E2 low signals: joints dry + skin dry
+  if (mAvg.joint_feel !== undefined && mAvg.joint_feel < 1.5) {
+    const hasAI = recent.some(d => (data[d]?.drugs?.ai || 0) > 0 || (data[d]?.drugs?.adex || 0) > 0);
+    if (hasAI) {
+      suggestions.push({ type: 'warning', text: '🦴 關節偏乾 + 有用 AI — E2 可能壓太低，考慮減少 AI 用量或停用觀察' });
+    } else {
+      suggestions.push({ type: 'info', text: '🦴 關節偏乾 — 如果沒用 AI，可能需要更多芳構化的 T 劑量' });
+    }
+  }
+
+  // Libido analysis
+  if (eAvg.libido_level !== undefined && eAvg.libido_level < 2) {
+    suggestions.push({ type: 'warning', text: '🔥 性慾持續偏低 — E2 過高或過低都會影響，建議抽血確認 E2 和 Free T' });
+  }
+
+  // Mood instability
+  if (eAvg.mood_stability !== undefined && eAvg.mood_stability < 2) {
+    suggestions.push({ type: 'info', text: '🧠 情緒不穩定 — 考慮增加注射頻率（減少荷爾蒙波動）、確認睡眠和 E2' });
+  }
+
+  // Energy consistently low
+  if (eAvg.overall_energy !== undefined && eAvg.overall_energy < 2 && mAvg.energy_wakeup !== undefined && mAvg.energy_wakeup < 2) {
+    suggestions.push({ type: 'warning', text: '⚡ 精力持續低落 — 檢查：睡眠品質、T 水平是否在波谷、甲狀腺功能' });
+  }
+
+  // Skin oil = DHT high
+  if (mAvg.skin_oil !== undefined && mAvg.skin_oil > 3.5) {
+    suggestions.push({ type: 'info', text: '💆 出油偏多 — DHT 活性偏高，Masteron/Proviron 會加重。可考慮降劑量' });
+  }
+
+  // Ad-hoc critical symptoms
+  const criticalCount = {};
+  recent.forEach(d => {
+    (data[d]?.adhocSymptoms || []).forEach(s => { criticalCount[s] = (criticalCount[s]||0) + 1; });
   });
-
-  // E2 analysis
-  if (catCounts.estrogen.neg >= 4) {
-    suggestions.push({ type: 'warning', text: '🔴 E2 相關症狀頻繁 — 考慮：降低睾酮劑量、增加注射頻率（減少峰值）、或酌量使用 AI' });
+  if (criticalCount.nipple_sens >= 2) {
+    suggestions.push({ type: 'warning', text: '⚠️ 乳頭敏感反覆出現 — 立即考慮 Nolvadex 20mg/天 + 查 E2 血檢' });
+  }
+  if (criticalCount.bp_high_feel >= 2 || criticalCount.headache >= 3) {
+    suggestions.push({ type: 'warning', text: '❤️‍🔥 血壓/頭痛反覆 — 立即量血壓、查 HCT。HCT>52% 需要捐血' });
+  }
+  if (criticalCount.shortness_breath >= 1) {
+    suggestions.push({ type: 'warning', text: '🚨 出現呼吸困難 — HCT 可能過高，建議立即抽血檢查' });
+  }
+  if (criticalCount.night_sweats >= 3) {
+    suggestions.push({ type: 'info', text: '💦 夜間盜汗頻繁 — 如果在用 Tren，這是常見副作用。也要排除 E2 偏高' });
   }
 
-  // Joint dryness = E2 too low (maybe too much AI)
-  const jointDry = recent.filter(d => flattenSymptoms(data[d]?.symptoms).includes('joint_stiff')).length;
-  if (jointDry >= 3 && recent.some(d => (data[d]?.drugs?.ai || 0) > 0)) {
-    suggestions.push({ type: 'warning', text: '🦴 關節卡 + 有使用 AI — 可能 E2 壓太低，考慮減少 AI 用量' });
-  }
-
-  // Sexual function down
-  if (catCounts.sexual.neg >= 3) {
-    suggestions.push({ type: 'warning', text: '🔥 性功能下降 — 可能 E2 失衡（過高或過低都會影響），建議抽血確認' });
-  }
-
-  // Mood issues
-  if (catCounts.mood_energy.neg >= 5) {
-    suggestions.push({ type: 'info', text: '🧠 精神狀態不穩定 — 考慮：檢查睡眠品質、穩定注射頻率、確認 E2 水平' });
-  }
-
-  // Skin/DHT
-  if (catCounts.skin_hair.neg >= 3) {
-    suggestions.push({ type: 'info', text: '💆 皮膚/掉髮問題 — 可能 DHT 偏高，Masteron 會加重此問題' });
-  }
-
-  // Injection frequency suggestion based on PK
+  // PK fluctuation
   const levels = calcPKLevels(data, 14);
   const activeLevels = levels.filter(l => l.totalT > 0);
   if (activeLevels.length >= 7) {
@@ -1201,16 +1366,16 @@ const generateDoseSuggestion = (data) => {
     const min = Math.min(...activeLevels.map(l => l.totalT));
     const fluctuation = max > 0 ? ((max - min) / max * 100).toFixed(0) : 0;
     if (fluctuation > 60) {
-      suggestions.push({ type: 'info', text: `📊 血濃度波動 ${fluctuation}% — 波動偏大，考慮增加注射頻率（如每3天改為隔天）來減少副作用` });
+      suggestions.push({ type: 'info', text: `📊 血濃度波動 ${fluctuation}% — 考慮增加注射頻率來減少波動和副作用` });
     }
   }
 
-  // Good status
+  // All good
   if (!suggestions.length && recent.length >= 7) {
-    const posTotal = Object.values(catCounts).reduce((s, c) => s + c.pos, 0);
-    const negTotal = Object.values(catCounts).reduce((s, c) => s + c.neg, 0);
-    if (posTotal > negTotal) {
-      suggestions.push({ type: 'good', text: '✅ 目前狀態看起來不錯！正面反應多於負面，建議維持目前方案' });
+    const goodMorning = Object.values(mAvg).filter(v => v >= 3).length;
+    const goodEvening = Object.values(eAvg).filter(v => v >= 3).length;
+    if (goodMorning + goodEvening >= 4) {
+      suggestions.push({ type: 'good', text: '✅ 各項指標穩定！check-in 分數整體良好，建議維持目前方案' });
     }
   }
 
@@ -1478,6 +1643,12 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
   const [drugTimes, setDrugTimes] = useState(entry.drugTimes || {});
   const [symptoms, setSymptoms] = useState(() => normalizeSymptoms(entry.symptoms));
   const [activePeriod, setActivePeriod] = useState('allday');
+  // Structured check-in scores
+  const [morningScores, setMorningScores] = useState(entry.morningScores || {});
+  const [eveningScores, setEveningScores] = useState(entry.eveningScores || {});
+  const [adhocSymptoms, setAdhocSymptoms] = useState(entry.adhocSymptoms || []);
+  const [showAdhoc, setShowAdhoc] = useState(false);
+  const [checkinTab, setCheckinTab] = useState('morning');
   const [note, setNote] = useState(entry.note || '');
   const [facePhoto, setFacePhoto] = useState(null);
   const [bodyPhoto, setBodyPhoto] = useState(null);
@@ -1513,6 +1684,10 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
     setSleep({ ...defaultSleep, ...(e.sleep || {}) });
     setSleepImportMsg('');
     setInjectionSite(e.injectionSite || '');
+    setMorningScores(e.morningScores || {});
+    setEveningScores(e.eveningScores || {});
+    setAdhocSymptoms(e.adhocSymptoms || []);
+    setShowAdhoc(false);
     // Load photos for this date (async IndexedDB)
     setFacePhoto(null); setBodyPhoto(null);
     setFaceAnalysis(null); setBodyAnalysis(null);
@@ -1605,8 +1780,14 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
     const cleanSleep = hasSleep ? sleep : undefined;
     const cleanWeight = weight ? parseFloat(weight) : undefined;
     const cleanSite = injectionSite || undefined;
-    const newData = { ...data, [selectedDate]: { ...existing, drugs: cleanDrugs, drugTimes: cleanTimes, symptoms, note, sleep: cleanSleep, weight: cleanWeight, injectionSite: cleanSite, updatedAt: new Date().toISOString() } };
-    if (!hasAnySymptoms && !Object.keys(cleanDrugs).length && !note && !existing.hasPhotos && !hasSleep && !cleanWeight && !cleanSite) delete newData[selectedDate];
+    const hasMorning = Object.keys(morningScores).length > 0;
+    const hasEvening = Object.keys(eveningScores).length > 0;
+    const hasAdhoc = adhocSymptoms.length > 0;
+    const cleanMorning = hasMorning ? morningScores : undefined;
+    const cleanEvening = hasEvening ? eveningScores : undefined;
+    const cleanAdhoc = hasAdhoc ? adhocSymptoms : undefined;
+    const newData = { ...data, [selectedDate]: { ...existing, drugs: cleanDrugs, drugTimes: cleanTimes, symptoms, note, sleep: cleanSleep, weight: cleanWeight, injectionSite: cleanSite, morningScores: cleanMorning, eveningScores: cleanEvening, adhocSymptoms: cleanAdhoc, updatedAt: new Date().toISOString() } };
+    if (!hasAnySymptoms && !Object.keys(cleanDrugs).length && !note && !existing.hasPhotos && !hasSleep && !cleanWeight && !cleanSite && !hasMorning && !hasEvening && !hasAdhoc) delete newData[selectedDate];
     updateData(newData);
     setSaveStatus('saved');
     setTimeout(() => setSaveStatus(''), 1500);
@@ -1914,45 +2095,141 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
         </div>
       )}
 
-      <div className="card">
-        <h3>📋 症狀紀錄</h3>
-        <div className="period-tabs">
-          {TIME_PERIODS.map(p => {
-            const count = (symptoms[p.key] || []).length;
+      {/* === Structured Daily Check-in === */}
+      <div style={{display:'flex',gap:6,marginBottom:2}}>
+        <button className={`period-tab ${checkinTab==='morning'?'active':''}`}
+          style={{flex:1,textAlign:'center',padding:'10px',fontSize:'0.9em'}}
+          onClick={() => setCheckinTab('morning')}>
+          🌅 起床 Check-in
+          {Object.keys(morningScores).length > 0 && <span style={{color:'var(--green)',marginLeft:4}}>✓</span>}
+        </button>
+        <button className={`period-tab ${checkinTab==='evening'?'active':''}`}
+          style={{flex:1,textAlign:'center',padding:'10px',fontSize:'0.9em'}}
+          onClick={() => setCheckinTab('evening')}>
+          🌙 晚間 Check-in
+          {Object.keys(eveningScores).length > 0 && <span style={{color:'var(--green)',marginLeft:4}}>✓</span>}
+        </button>
+      </div>
+
+      {checkinTab === 'morning' && (
+        <div className="checkin-card morning">
+          <h3 style={{color:'var(--orange)',fontSize:'0.95em',marginBottom:4}}>🌅 起床身體檢查</h3>
+          <p style={{fontSize:'0.72em',color:'var(--text2)',marginBottom:12}}>每天起床填寫，5 項指標用於追蹤劑量反應</p>
+          {MORNING_CHECKIN.map(item => {
+            const val = morningScores[item.key];
             return (
-              <button key={p.key} className={`period-tab ${activePeriod===p.key?'active':''}`}
-                onClick={() => setActivePeriod(p.key)}>
-                {p.label}
-                {count > 0 && <span className="period-count">{count}</span>}
-              </button>
+              <div className="checkin-item" key={item.key}>
+                <div className="checkin-label">
+                  <span className="cl-name">{item.icon} {item.label}</span>
+                  <span className="cl-value" style={{color: val !== undefined ? item.colors[val] : 'var(--text2)'}}>
+                    {val !== undefined ? item.levels[val] : '未填'}
+                  </span>
+                </div>
+                <div className="score-btns">
+                  {item.levels.map((lv, i) => (
+                    <button key={i} className={`score-btn ${val === i ? 'active' : ''}`}
+                      style={val === i ? {background: item.colors[i]} : {}}
+                      onClick={() => setMorningScores(prev => ({...prev, [item.key]: i}))}>
+                      {i}
+                    </button>
+                  ))}
+                </div>
+                <div className="checkin-indicator">
+                  <span>{item.levels[0]}</span>
+                  <span>{item.levels[5]}</span>
+                </div>
+                {val !== undefined && (
+                  <div style={{fontSize:'0.62em',color:'var(--text2)',marginTop:2,fontStyle:'italic'}}>
+                    💡 {item.significance}
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>
-        {SYMPTOM_CATEGORIES.map(cat => {
-          const catSyms = SYMPTOMS.filter(s => s.cat === cat.key);
-          const activeCount = catSyms.filter(s => (symptoms[activePeriod] || []).includes(s.key)).length;
-          return (
-            <div key={cat.key} style={{marginBottom:10}}>
-              <div style={{fontSize:'0.8em',color:cat.color,fontWeight:600,marginBottom:6,display:'flex',alignItems:'center',gap:6}}>
-                {cat.label}
-                {activeCount > 0 && <span style={{background:cat.color,color:'#fff',borderRadius:10,padding:'0 6px',fontSize:'0.85em'}}>{activeCount}</span>}
-              </div>
-              <div className="sym-grid">
-                {catSyms.map(s => {
-                  const isActive = (symptoms[activePeriod] || []).includes(s.key);
-                  const inOtherPeriods = TIME_PERIODS.filter(p => p.key !== activePeriod && (symptoms[p.key] || []).includes(s.key)).map(p => p.label);
-                  return (
-                    <button key={s.key} className={`sym-btn ${s.type} ${isActive?'active':''}`}
-                      onClick={() => toggleSymptom(s.key)}>
-                      {s.label}
-                      {inOtherPeriods.length > 0 && <span className="sym-time-label">({inOtherPeriods.join('/')})</span>}
+      )}
+
+      {checkinTab === 'evening' && (
+        <div className="checkin-card evening">
+          <h3 style={{color:'var(--purple)',fontSize:'0.95em',marginBottom:4}}>🌙 晚間回顧</h3>
+          <p style={{fontSize:'0.72em',color:'var(--text2)',marginBottom:12}}>睡前填寫今日整體感受</p>
+          {EVENING_CHECKIN.map(item => {
+            const val = eveningScores[item.key];
+            return (
+              <div className="checkin-item" key={item.key}>
+                <div className="checkin-label">
+                  <span className="cl-name">{item.icon} {item.label}</span>
+                  <span className="cl-value" style={{color: val !== undefined ? item.colors[val] : 'var(--text2)'}}>
+                    {val !== undefined ? item.levels[val] : '未填'}
+                  </span>
+                </div>
+                <div className="score-btns">
+                  {item.levels.map((lv, i) => (
+                    <button key={i} className={`score-btn ${val === i ? 'active' : ''}`}
+                      style={val === i ? {background: item.colors[i]} : {}}
+                      onClick={() => setEveningScores(prev => ({...prev, [item.key]: i}))}>
+                      {i}
                     </button>
+                  ))}
+                </div>
+                <div className="checkin-indicator">
+                  <span>{item.levels[0]}</span>
+                  <span>{item.levels[5]}</span>
+                </div>
+                {val !== undefined && (
+                  <div style={{fontSize:'0.62em',color:'var(--text2)',marginTop:2,fontStyle:'italic'}}>
+                    💡 {item.significance}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Ad-hoc Notable Symptoms */}
+      <div className="card">
+        <div className="adhoc-header" onClick={() => setShowAdhoc(!showAdhoc)}>
+          <h3>⚡ 額外症狀紀錄 {adhocSymptoms.length > 0 && <span className="adhoc-count">{adhocSymptoms.length}</span>}</h3>
+          <span style={{color:'var(--text2)',fontSize:'0.8em'}}>{showAdhoc ? '收起 ▲' : '有明顯症狀？點此記錄 ▼'}</span>
+        </div>
+        {showAdhoc && (
+          <>
+            <p style={{fontSize:'0.72em',color:'var(--text2)',marginBottom:10}}>只在症狀出現時點選，每個都附有劑量調整建議</p>
+            <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+              {ADHOC_SYMPTOMS.map(s => {
+                const isActive = adhocSymptoms.includes(s.key);
+                const sevColor = s.severity === 'critical' ? 'var(--red)' : s.severity === 'high' ? 'var(--orange)' : s.severity === 'medium' ? 'var(--blue)' : 'var(--text2)';
+                return (
+                  <button key={s.key}
+                    style={{padding:'6px 10px',borderRadius:16,border:`1px solid ${isActive ? sevColor : 'var(--border)'}`,
+                      background: isActive ? `${sevColor}` : 'var(--card2)',
+                      color: isActive ? '#fff' : 'var(--text2)',fontSize:'0.8em',cursor:'pointer',transition:'all 0.15s'}}
+                    onClick={() => setAdhocSymptoms(prev =>
+                      prev.includes(s.key) ? prev.filter(x => x !== s.key) : [...prev, s.key]
+                    )}>
+                    {s.icon} {s.label}
+                  </button>
+                );
+              })}
+            </div>
+            {/* Show hints for active symptoms */}
+            {adhocSymptoms.length > 0 && (
+              <div style={{marginTop:10,padding:10,background:'var(--card2)',borderRadius:8}}>
+                <div style={{fontSize:'0.78em',fontWeight:600,color:'var(--orange)',marginBottom:6}}>⚠️ 注意事項：</div>
+                {adhocSymptoms.map(key => {
+                  const s = ADHOC_SYMPTOMS.find(x => x.key === key);
+                  if (!s) return null;
+                  return (
+                    <div key={key} style={{fontSize:'0.75em',padding:'3px 0',color:'var(--text)',borderBottom:'1px solid var(--border)'}}>
+                      <b>{s.icon} {s.label}</b>：<span style={{color:'var(--text2)'}}>{s.hint}</span>
+                    </div>
                   );
                 })}
               </div>
-            </div>
-          );
-        })}
+            )}
+          </>
+        )}
       </div>
 
       <div className="card">
@@ -3512,7 +3789,7 @@ function MorePage({ data, updateData }) {
       <AutoSleepImport data={data} updateData={updateData} />
 
       <div className="card" style={{fontSize:'0.78em',color:'var(--text2)'}}>
-        用藥追蹤 App v7.0<br/>
+        用藥追蹤 App v8.0<br/>
         本工具僅供個人紀錄用途，不構成醫療建議。
       </div>
     </div>
