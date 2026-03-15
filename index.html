@@ -360,25 +360,81 @@ const calcVialRemaining = (drugKey, inventory, data) => {
 };
 
 // === Blood Work Reference Ranges & Alerts ===
+const BLOOD_MARKER_GROUPS = [
+  { key: 'hormone', label: '🧬 荷爾蒙' },
+  { key: 'liver', label: '🫁 肝功能' },
+  { key: 'kidney', label: '🫘 腎功能' },
+  { key: 'lipid', label: '🩸 血脂肪' },
+  { key: 'blood', label: '🔬 血液常規' },
+  { key: 'wbc_diff', label: '🦠 白血球分類' },
+  { key: 'electrolyte', label: '⚡ 電解質' },
+  { key: 'thyroid', label: '🦋 甲狀腺' },
+  { key: 'other', label: '📋 其他' },
+];
+
 const BLOOD_MARKERS = [
-  { key: 'total_t', label: 'Total T', unit: 'ng/dL', low: 300, high: 1000, critical_low: 200, critical_high: 1500, color: '#7a94b0' },
-  { key: 'free_t', label: 'Free T', unit: 'pg/mL', low: 8.7, high: 25, critical_low: 5, critical_high: 50, color: '#7882a8' },
-  { key: 'e2', label: 'Estradiol (E2)', unit: 'pg/mL', low: 15, high: 45, critical_low: 5, critical_high: 80, color: '#c4856a' },
-  { key: 'shbg', label: 'SHBG', unit: 'nmol/L', low: 16, high: 55, critical_low: 10, critical_high: 80, color: '#8b7fa8' },
-  { key: 'hematocrit', label: '紅血球容積比 (HCT)', unit: '%', low: 38, high: 52, critical_low: 35, critical_high: 54, color: '#b85c5c' },
-  { key: 'hemoglobin', label: '血紅素 (Hb)', unit: 'g/dL', low: 13.5, high: 17.5, critical_low: 12, critical_high: 19, color: '#a05050' },
-  { key: 'psa', label: 'PSA', unit: 'ng/mL', low: 0, high: 4.0, critical_low: 0, critical_high: 4.0, color: '#c4956a' },
-  { key: 'alt', label: 'ALT (肝指數)', unit: 'U/L', low: 7, high: 56, critical_low: 0, critical_high: 100, color: '#c4a05a' },
-  { key: 'ast', label: 'AST', unit: 'U/L', low: 10, high: 40, critical_low: 0, critical_high: 80, color: '#b58a5e' },
-  { key: 'creatinine', label: '肌酐酸', unit: 'mg/dL', low: 0.7, high: 1.3, critical_low: 0.5, critical_high: 2.0, color: '#7a9e8e' },
-  { key: 'ldl', label: 'LDL膽固醇', unit: 'mg/dL', low: 0, high: 130, critical_low: 0, critical_high: 160, color: '#c4956a' },
-  { key: 'hdl', label: 'HDL膽固醇', unit: 'mg/dL', low: 40, high: 100, critical_low: 30, critical_high: 200, color: '#7a9e8e' },
-  { key: 'prolactin', label: '泌乳素', unit: 'ng/mL', low: 2, high: 18, critical_low: 0, critical_high: 30, color: '#a87ab0' },
-  { key: 'dht', label: 'DHT', unit: 'pg/mL', low: 300, high: 850, critical_low: 200, critical_high: 1200, color: '#9b8bb8' },
-  { key: 'igf1', label: 'IGF-1', unit: 'ng/mL', low: 100, high: 350, critical_low: 50, critical_high: 500, color: '#6b9aaa' },
-  { key: 'tsh', label: 'TSH', unit: 'mIU/L', low: 0.4, high: 4.0, critical_low: 0.1, critical_high: 10, color: '#b48dba' },
-  { key: 'bp_sys', label: '收縮壓', unit: 'mmHg', low: 90, high: 130, critical_low: 80, critical_high: 140, color: '#b85c5c' },
-  { key: 'bp_dia', label: '舒張壓', unit: 'mmHg', low: 60, high: 85, critical_low: 50, critical_high: 90, color: '#a05050' },
+  // 荷爾蒙
+  { key: 'total_t', label: 'Total T (睪固酮)', unit: 'ng/dL', low: 300, high: 1000, critical_low: 200, critical_high: 1500, color: '#7a94b0', group: 'hormone' },
+  { key: 'free_t', label: 'Free T (游離睪固酮)', unit: 'ng/dL', low: 5, high: 25, critical_low: 3, critical_high: 50, color: '#7882a8', group: 'hormone' },
+  { key: 'e2', label: 'E2 (雌二醇)', unit: 'pg/mL', low: 15, high: 45, critical_low: 5, critical_high: 80, color: '#c4856a', group: 'hormone' },
+  { key: 'shbg', label: 'SHBG', unit: 'nmol/L', low: 16, high: 55, critical_low: 10, critical_high: 80, color: '#8b7fa8', group: 'hormone' },
+  { key: 'fsh', label: 'FSH (濾泡刺激素)', unit: 'mIU/mL', low: 1.5, high: 12.4, critical_low: 0.5, critical_high: 20, color: '#6b8fa8', group: 'hormone' },
+  { key: 'lh', label: 'LH (黃體形成激素)', unit: 'mIU/mL', low: 1.7, high: 8.6, critical_low: 0.5, critical_high: 15, color: '#7a8fb0', group: 'hormone' },
+  { key: 'prolactin', label: '泌乳素 (Prolactin)', unit: 'ng/mL', low: 2, high: 18, critical_low: 0, critical_high: 30, color: '#a87ab0', group: 'hormone' },
+  { key: 'progesterone', label: '黃體素 (Progesterone)', unit: 'ng/mL', low: 0.2, high: 1.4, critical_low: 0, critical_high: 5, color: '#b08a7a', group: 'hormone' },
+  { key: 'dht', label: 'DHT (二氫睪固酮)', unit: 'pg/mL', low: 300, high: 850, critical_low: 200, critical_high: 1200, color: '#9b8bb8', group: 'hormone' },
+  { key: 'dhea_s', label: 'DHEA-S', unit: 'ug/dL', low: 80, high: 560, critical_low: 40, critical_high: 700, color: '#8a9bb0', group: 'hormone' },
+  { key: 'igf1', label: 'IGF-1', unit: 'ng/mL', low: 100, high: 350, critical_low: 50, critical_high: 500, color: '#6b9aaa', group: 'hormone' },
+  { key: 'growth_hormone', label: 'GH (生長激素)', unit: 'ng/mL', low: 0.05, high: 3, critical_low: 0, critical_high: 10, color: '#7ab0a0', group: 'hormone' },
+  // 肝功能
+  { key: 'alt', label: 'GPT/ALT', unit: 'U/L', low: 7, high: 56, critical_low: 0, critical_high: 100, color: '#c4a05a', group: 'liver' },
+  { key: 'ast', label: 'GOT/AST', unit: 'U/L', low: 10, high: 40, critical_low: 0, critical_high: 80, color: '#b58a5e', group: 'liver' },
+  { key: 'gamma_gt', label: 'γ-GT', unit: 'U/L', low: 0, high: 60, critical_low: 0, critical_high: 100, color: '#c4956a', group: 'liver' },
+  { key: 'alk_p', label: 'Alk-P (鹼性磷酸酶)', unit: 'U/L', low: 40, high: 150, critical_low: 20, critical_high: 250, color: '#b8a060', group: 'liver' },
+  { key: 'albumin', label: '白蛋白 (Albumin)', unit: 'g/dL', low: 3.5, high: 5.5, critical_low: 2.5, critical_high: 6, color: '#8a9e7a', group: 'liver' },
+  { key: 'total_protein', label: '總蛋白 (TP)', unit: 'g/dL', low: 6.5, high: 8.5, critical_low: 5.5, critical_high: 9.5, color: '#8a8e7a', group: 'liver' },
+  { key: 'globulin', label: '球蛋白 (Globulin)', unit: 'g/dL', low: 1.3, high: 3.5, critical_low: 1.0, critical_high: 4.5, color: '#7a8e8a', group: 'liver' },
+  { key: 'ag_ratio', label: 'A/G 比值', unit: '', low: 1.0, high: 2.5, critical_low: 0.7, critical_high: 3.0, color: '#8a9a7a', group: 'liver' },
+  // 腎功能
+  { key: 'creatinine', label: '肌酐酸 (Creatinine)', unit: 'mg/dL', low: 0.7, high: 1.3, critical_low: 0.5, critical_high: 2.0, color: '#7a9e8e', group: 'kidney' },
+  { key: 'bun', label: '尿素氮 (BUN)', unit: 'mg/dL', low: 5, high: 25, critical_low: 3, critical_high: 40, color: '#6b9a8e', group: 'kidney' },
+  { key: 'gfr', label: 'eGFR (腎絲球過濾率)', unit: 'mL/min', low: 60, high: 120, critical_low: 30, critical_high: 200, color: '#7aaa8e', group: 'kidney' },
+  { key: 'uric_acid', label: '尿酸 (Uric Acid)', unit: 'mg/dL', low: 2.0, high: 7.0, critical_low: 1.5, critical_high: 9.0, color: '#8a8e9e', group: 'kidney' },
+  // 血脂肪
+  { key: 't_cholesterol', label: '總膽固醇', unit: 'mg/dL', low: 0, high: 200, critical_low: 0, critical_high: 240, color: '#c4856a', group: 'lipid' },
+  { key: 'ldl', label: 'LDL 膽固醇', unit: 'mg/dL', low: 0, high: 130, critical_low: 0, critical_high: 160, color: '#c4956a', group: 'lipid' },
+  { key: 'hdl', label: 'HDL 膽固醇', unit: 'mg/dL', low: 40, high: 100, critical_low: 30, critical_high: 200, color: '#7a9e8e', group: 'lipid' },
+  { key: 'triglyceride', label: '三酸甘油脂 (TG)', unit: 'mg/dL', low: 30, high: 150, critical_low: 0, critical_high: 200, color: '#b0856a', group: 'lipid' },
+  { key: 't_cho_hdl', label: '血管硬化指數', unit: '', low: 1.0, high: 5.0, critical_low: 0, critical_high: 5.5, color: '#b08a70', group: 'lipid' },
+  // 血液常規
+  { key: 'rbc', label: '紅血球 (RBC)', unit: '×10⁶/μL', low: 4.2, high: 6.2, critical_low: 3.5, critical_high: 7.0, color: '#b85c5c', group: 'blood' },
+  { key: 'hemoglobin', label: '血紅素 (Hb)', unit: 'g/dL', low: 13.5, high: 17.5, critical_low: 12, critical_high: 19, color: '#a05050', group: 'blood' },
+  { key: 'hematocrit', label: '紅血球容積比 (HCT)', unit: '%', low: 38, high: 52, critical_low: 35, critical_high: 54, color: '#b85c6c', group: 'blood' },
+  { key: 'mcv', label: 'MCV (平均血球容積)', unit: 'fL', low: 80, high: 100, critical_low: 70, critical_high: 110, color: '#a07070', group: 'blood' },
+  { key: 'mch', label: 'MCH', unit: 'pg', low: 27, high: 34, critical_low: 23, critical_high: 38, color: '#9a7070', group: 'blood' },
+  { key: 'mchc', label: 'MCHC', unit: 'g/dL', low: 30, high: 38, critical_low: 28, critical_high: 40, color: '#907070', group: 'blood' },
+  { key: 'wbc', label: '白血球 (WBC)', unit: '×10³/μL', low: 3.5, high: 10.0, critical_low: 2.5, critical_high: 15, color: '#8a8a70', group: 'blood' },
+  { key: 'platelet', label: '血小板 (PLT)', unit: '×10³/μL', low: 120, high: 400, critical_low: 80, critical_high: 500, color: '#b0907a', group: 'blood' },
+  // 白血球分類
+  { key: 'neutro', label: '中性球 (Neutro)', unit: '%', low: 40, high: 75, critical_low: 30, critical_high: 85, color: '#8a9070', group: 'wbc_diff' },
+  { key: 'lympho', label: '淋巴球 (Lympho)', unit: '%', low: 20, high: 45, critical_low: 10, critical_high: 55, color: '#709080', group: 'wbc_diff' },
+  { key: 'mono', label: '單核球 (Mono)', unit: '%', low: 2, high: 10, critical_low: 0, critical_high: 15, color: '#7a8a80', group: 'wbc_diff' },
+  { key: 'eosin', label: '嗜酸性球 (Eosin)', unit: '%', low: 0, high: 6, critical_low: 0, critical_high: 10, color: '#8a7a80', group: 'wbc_diff' },
+  { key: 'baso', label: '嗜鹼性球 (Baso)', unit: '%', low: 0, high: 2, critical_low: 0, critical_high: 3, color: '#7a7a8a', group: 'wbc_diff' },
+  // 電解質
+  { key: 'calcium', label: '鈣 (Ca)', unit: 'mg/dL', low: 8.5, high: 11.5, critical_low: 7.5, critical_high: 13, color: '#8ab07a', group: 'electrolyte' },
+  { key: 'phosphorus', label: '磷 (P)', unit: 'mg/dL', low: 2.6, high: 5.0, critical_low: 2.0, critical_high: 6.0, color: '#7aa08a', group: 'electrolyte' },
+  // 甲狀腺
+  { key: 'tsh', label: 'TSH', unit: 'mIU/L', low: 0.4, high: 4.0, critical_low: 0.1, critical_high: 10, color: '#b48dba', group: 'thyroid' },
+  { key: 'free_t3', label: 'Free T3', unit: 'pg/mL', low: 2.0, high: 4.4, critical_low: 1.5, critical_high: 6.0, color: '#a48daa', group: 'thyroid' },
+  { key: 'free_t4', label: 'Free T4', unit: 'ng/dL', low: 0.8, high: 1.8, critical_low: 0.5, critical_high: 2.5, color: '#9a8da0', group: 'thyroid' },
+  // 其他
+  { key: 'glucose_ac', label: '飯前血糖 (AC)', unit: 'mg/dL', low: 60, high: 100, critical_low: 50, critical_high: 126, color: '#c4a05a', group: 'other' },
+  { key: 'crp', label: 'CRP (C反應蛋白)', unit: 'mg/dL', low: 0, high: 0.5, critical_low: 0, critical_high: 1.0, color: '#b07070', group: 'other' },
+  { key: 'psa', label: 'PSA (攝護腺)', unit: 'ng/mL', low: 0, high: 4.0, critical_low: 0, critical_high: 4.0, color: '#c4956a', group: 'other' },
+  { key: 'afp', label: 'AFP (肝癌篩檢)', unit: 'ng/mL', low: 0, high: 7, critical_low: 0, critical_high: 20, color: '#a09070', group: 'other' },
+  { key: 'bp_sys', label: '收縮壓', unit: 'mmHg', low: 90, high: 130, critical_low: 80, critical_high: 140, color: '#b85c5c', group: 'other' },
+  { key: 'bp_dia', label: '舒張壓', unit: 'mmHg', low: 60, high: 85, critical_low: 50, critical_high: 90, color: '#a05050', group: 'other' },
 ];
 
 const getMarkerStatus = (marker, value) => {
@@ -391,6 +447,49 @@ const getMarkerStatus = (marker, value) => {
   if (v > marker.high) return { status: 'high', label: '偏高', color: '#c4956a' };
   return { status: 'normal', label: '正常', color: '#7a9e8e' };
 };
+
+// === Imported Blood Work from Lab Reports (54 reports, 2017-2022) ===
+const IMPORTED_BLOOD_WORK = [
+  {date:'2017-04-06',total_t:502,free_t:10.1,e2:39.1,shbg:32.2,fsh:2.7,lh:7.6,albumin:4.8},
+  {date:'2017-05-20',total_t:1336,free_t:36.8,e2:25.9,shbg:23.8,albumin:4.8},
+  {date:'2017-08-10',total_t:1001,free_t:26.1,e2:16.2,shbg:25.7,albumin:4.6},
+  {date:'2017-10-21',free_t:47.9,e2:31.4,shbg:19.9,hematocrit:49.7,hemoglobin:17,alt:23,ast:29,creatinine:0.91,ldl:121,hdl:41,albumin:4.4,total_protein:7.8,globulin:3.4,alk_p:58,gamma_gt:14,bun:22,uric_acid:6,glucose_ac:94,t_cholesterol:190,triglyceride:146,rbc:5.3,wbc:4.29,platelet:229,mcv:93.8,mch:32.1,mchc:34.2,neutro:41.4,lympho:48.3,mono:6.3,eosin:3.3,baso:0.7,calcium:9.8,phosphorus:4,afp:1.6,gfr:103.28,ag_ratio:1.29,t_cho_hdl:4.63},
+  {date:'2018-07-31',total_t:781.1,free_t:22.1,e2:54.1,shbg:19.3,prolactin:20.99,albumin:4.5},
+  {date:'2018-10-15',free_t:43.2,e2:64.4,shbg:24.7,hematocrit:50.3,hemoglobin:17.3,alt:21,ast:22,creatinine:0.96,ldl:121,hdl:47,prolactin:6.46,tsh:1.65,albumin:4.6,total_protein:7.8,globulin:3.2,bun:20,uric_acid:6.3,glucose_ac:91,t_cholesterol:181,triglyceride:122,rbc:5.38,wbc:5.6,platelet:216,mcv:93.5,mch:32.2,mchc:34.4,neutro:47.7,lympho:44.3,mono:4.3,eosin:3.2,baso:0.5,calcium:9.3,phosphorus:3,gfr:96.48,ag_ratio:1.44,t_cho_hdl:3.85},
+  {date:'2019-01-09',free_t:35.6,e2:25,shbg:35.4,hematocrit:51.9,hemoglobin:17.4,alt:30,ast:28,creatinine:0.98,ldl:92,hdl:45,prolactin:5.14,tsh:2.83,albumin:4.9,total_protein:7.8,globulin:2.9,bun:25,uric_acid:5.8,glucose_ac:90,t_cholesterol:155,triglyceride:132,rbc:5.49,wbc:5.36,platelet:231,mcv:94.5,mch:31.7,mchc:33.5,neutro:53.3,lympho:37.5,mono:4.7,eosin:4.1,baso:0.4,calcium:9.8,phosphorus:3.1,gfr:93.62,ag_ratio:1.69,t_cho_hdl:3.44},
+  {date:'2019-03-08',total_t:1054,free_t:29.4,e2:19.3,shbg:21.1,hematocrit:50.1,hemoglobin:17,alt:26,ast:24,creatinine:0.95,ldl:127,hdl:43,prolactin:9.25,tsh:1.91,albumin:4.7,total_protein:7.7,globulin:3,bun:25,uric_acid:5.8,glucose_ac:94,t_cholesterol:187,triglyceride:136,rbc:5.25,wbc:3.73,platelet:247,mcv:95.4,mch:32.4,mchc:33.9,neutro:45.3,lympho:46.1,mono:4.3,eosin:3.8,baso:0.5,calcium:9.8,phosphorus:3.3,gfr:97.04,ag_ratio:1.57,t_cho_hdl:4.35,growth_hormone:0.04},
+  {date:'2019-05-24',free_t:52.7,e2:14.9,shbg:14.4,hematocrit:47.6,hemoglobin:16.3,alt:24,ast:24,creatinine:0.88,ldl:87,hdl:37,prolactin:17.4,tsh:1.53,albumin:4.3,total_protein:6.8,globulin:2.5,bun:18,uric_acid:5.9,glucose_ac:118,t_cholesterol:134,triglyceride:93,rbc:5.07,wbc:4.45,platelet:265,mcv:93.9,mch:32.1,mchc:34.2,neutro:54.4,lympho:38.4,mono:4.3,eosin:2.5,baso:0.4,calcium:9,phosphorus:2.9,gfr:106,ag_ratio:1.72,t_cho_hdl:3.62},
+  {date:'2019-09-21',total_t:1113,free_t:29.8,e2:54.4,shbg:23.3,hematocrit:50.2,hemoglobin:17.1,psa:0.81,alt:35,ast:32,creatinine:0.9,ldl:115,hdl:36,prolactin:17.1,tsh:1.85,albumin:4.8,total_protein:7.3,globulin:2.5,bun:21,uric_acid:6.1,glucose_ac:94,t_cholesterol:173,triglyceride:174,rbc:5.46,wbc:6.01,platelet:209,mcv:91.9,mch:31.3,mchc:34.1,neutro:27,lympho:64.2,mono:6.7,eosin:1.8,baso:0.3,calcium:9.2,phosphorus:3.1,gfr:103.29,ag_ratio:1.92,t_cho_hdl:4.81},
+  {date:'2019-10-05',total_t:1036,free_t:27.4,e2:43,shbg:23.2,hematocrit:48.2,hemoglobin:16.9,alt:29,ast:26,creatinine:0.81,ldl:127,hdl:47,prolactin:8.82,igf1:166,tsh:1.91,albumin:4.8,total_protein:7.7,globulin:2.9,bun:17,uric_acid:7,glucose_ac:91,t_cholesterol:181,triglyceride:72,rbc:5.19,wbc:6.45,platelet:215,mcv:92.9,mch:32.6,mchc:35.1,neutro:28.4,lympho:63.7,mono:5.3,eosin:2.3,baso:0.3,calcium:9.4,phosphorus:3.1,gfr:116.64,ag_ratio:1.66,t_cho_hdl:3.85},
+  {date:'2019-10-24',total_t:1160,e2:18.2,shbg:24.9,hematocrit:49.4,hemoglobin:17.4,alt:47,ast:41,creatinine:0.87,ldl:116,hdl:40,prolactin:2.54,tsh:1.63,albumin:4.8,total_protein:7.7,globulin:2.9,bun:32,uric_acid:5.4,glucose_ac:90,t_cholesterol:184,triglyceride:460,rbc:5.27,wbc:5.93,platelet:203,mcv:93.7,mch:33,mchc:35.2,neutro:35.6,lympho:57.3,mono:4.9,eosin:1.9,baso:0.3,calcium:9.8,phosphorus:2.9,gfr:107.41,ag_ratio:1.66,t_cho_hdl:4.6},
+  {date:'2019-11-22',total_t:775,e2:34.7,shbg:7.9,hematocrit:47.8,hemoglobin:16.2,alt:29,ast:30,creatinine:0.87,ldl:171,hdl:15,prolactin:4.66,albumin:4.7,total_protein:7.5,globulin:2.8,bun:19,uric_acid:4.6,glucose_ac:88,t_cholesterol:210,triglyceride:155,rbc:5.01,wbc:6.76,platelet:280,mcv:95.4,mch:32.3,mchc:33.9,neutro:39.8,lympho:53.3,mono:5.5,eosin:1.3,baso:0.1,calcium:9.4,phosphorus:3.5,gfr:107.41,ag_ratio:1.68,t_cho_hdl:14},
+  {date:'2019-12-06',total_t:738,e2:45,shbg:7.5,hematocrit:46,hemoglobin:15.7,alt:26,ast:26,creatinine:1.02,ldl:187,hdl:19,prolactin:2.11,albumin:4.6,total_protein:7.5,globulin:2.9,bun:22,uric_acid:4.2,glucose_ac:88,t_cholesterol:222,triglyceride:127,rbc:4.91,wbc:4.88,platelet:300,mcv:93.7,mch:32,mchc:34.1,neutro:30.5,lympho:58.8,mono:7,eosin:3.3,baso:0.4,calcium:9.1,phosphorus:3.4,gfr:89.4,ag_ratio:1.59,t_cho_hdl:11.68},
+  {date:'2020-02-13',e2:15.6,shbg:13.4,hematocrit:49,hemoglobin:16.8,alt:27,ast:25,creatinine:0.99,ldl:108,hdl:45,prolactin:1.03,albumin:4.7,total_protein:7.4,globulin:2.7,bun:25,uric_acid:4.7,glucose_ac:89,t_cholesterol:170,triglyceride:149,rbc:5.21,wbc:5.52,platelet:210,mcv:94,mch:32.2,mchc:34.3,neutro:57.3,lympho:36.1,mono:4.9,eosin:1.3,baso:0.4,calcium:9.8,phosphorus:2.8,gfr:91.97,ag_ratio:1.74,t_cho_hdl:3.78},
+  {date:'2020-03-26',total_t:1072,e2:24.8,shbg:11.2,hematocrit:50.5,hemoglobin:16.8,alt:23,ast:24,creatinine:1.01,ldl:130,hdl:36,prolactin:1.89,albumin:4.8,total_protein:7.4,globulin:2.6,bun:29,uric_acid:5.5,glucose_ac:86,t_cholesterol:179,triglyceride:142,rbc:5.24,wbc:5.07,platelet:221,mcv:96.4,mch:32.1,mchc:33.3,neutro:47.7,lympho:42.2,mono:7.9,eosin:1.8,baso:0.4,calcium:9.7,phosphorus:3.6,gfr:89.87,ag_ratio:1.85,t_cho_hdl:4.97},
+  {date:'2020-05-06',total_t:1043,e2:24.2,shbg:16.8,hematocrit:48.4,hemoglobin:16.3,alt:20,ast:26,creatinine:0.97,ldl:100,hdl:44,prolactin:17.3,albumin:4.4,total_protein:7.1,globulin:2.7,bun:21,uric_acid:6.4,glucose_ac:83,t_cholesterol:156,triglyceride:124,rbc:4.97,wbc:4.63,platelet:228,mcv:97.4,mch:32.8,mchc:33.7,neutro:56.7,lympho:34.1,mono:5.6,eosin:3,baso:0.6,calcium:9.5,phosphorus:2.9,gfr:94.16,ag_ratio:1.63,t_cho_hdl:3.55},
+  {date:'2020-06-01',total_t:917,e2:24.6,shbg:11,hematocrit:48.2,hemoglobin:16.6,alt:20,ast:23,creatinine:1.05,ldl:94,hdl:45,prolactin:6.46,albumin:4.5,total_protein:7.1,globulin:2.6,bun:15,uric_acid:5.7,glucose_ac:98,t_cholesterol:148,triglyceride:114,rbc:4.96,wbc:4.51,platelet:192,mcv:97.2,mch:33.5,mchc:34.4,neutro:53.4,lympho:39.9,mono:4.7,eosin:1.6,baso:0.4,calcium:9.3,phosphorus:3,dhea_s:470,gfr:85.94,ag_ratio:1.73,t_cho_hdl:3.29},
+  {date:'2020-06-22',total_t:877,free_t:29.1,e2:14.3,shbg:10.4,hematocrit:49.1,hemoglobin:16.7,alt:23,ast:30,creatinine:1.15,ldl:115,hdl:46,prolactin:4.44,albumin:4.6,total_protein:7.1,globulin:2.5,bun:17,uric_acid:7.1,glucose_ac:93,t_cholesterol:176,triglyceride:118,rbc:5.16,wbc:4.92,platelet:198,mcv:95.2,mch:32.4,mchc:34,neutro:48.8,lympho:42.3,mono:5.9,eosin:2.4,baso:0.6,calcium:9.6,phosphorus:3.2,gfr:77.37,ag_ratio:1.84,t_cho_hdl:3.83},
+  {date:'2020-08-27',total_t:1092,free_t:36,e2:22.8,shbg:10.9,hematocrit:48.4,hemoglobin:16.8,alt:25,ast:24,creatinine:1.14,ldl:70,hdl:36,prolactin:7.62,tsh:2.52,albumin:4.7,total_protein:7.6,globulin:2.9,bun:21,uric_acid:4.9,glucose_ac:92,t_cholesterol:118,triglyceride:84,rbc:5.01,wbc:9.62,platelet:273,mcv:96.6,mch:33.5,mchc:34.7,neutro:74.3,lympho:20.4,mono:4.4,eosin:0.6,baso:0.3,calcium:9.6,phosphorus:3,free_t3:2.42,free_t4:1.05,gfr:78.15,ag_ratio:1.62,t_cho_hdl:3.28},
+  {date:'2020-10-14',total_t:886,free_t:29.8,e2:24,shbg:7.6,hematocrit:46.9,hemoglobin:16,alt:36,ast:36,creatinine:1.06,ldl:103,hdl:26,prolactin:6.84,albumin:4.8,total_protein:7.4,globulin:2.6,bun:20,uric_acid:5,glucose_ac:96,t_cholesterol:139,triglyceride:85,rbc:4.92,wbc:4.37,platelet:281,mcv:95.3,mch:32.5,mchc:34.1,neutro:48.3,lympho:44.4,mono:5.7,eosin:1.4,baso:0.2,calcium:9.7,phosphorus:3.8,gfr:85,ag_ratio:1.85,t_cho_hdl:5.35},
+  {date:'2020-11-13',total_t:1044,free_t:33.6,e2:22,shbg:11.1,hematocrit:50.6,hemoglobin:17.5,alt:26,ast:28,creatinine:1.06,ldl:89,hdl:33,prolactin:7.64,albumin:4.8,total_protein:7.6,globulin:2.8,bun:23,uric_acid:5.2,glucose_ac:92,t_cholesterol:131,triglyceride:67,rbc:5.36,wbc:3.35,platelet:222,mcv:94.4,mch:32.6,mchc:34.6,neutro:38.2,lympho:52.5,mono:6.9,eosin:1.5,baso:0.9,calcium:9.5,phosphorus:3.3,gfr:85,ag_ratio:1.71,t_cho_hdl:3.97},
+  {date:'2021-02-04',total_t:1189,free_t:40.8,e2:60.4,shbg:11.5,hematocrit:45.8,hemoglobin:15.7,alt:16,ast:20,creatinine:0.91,ldl:98,hdl:40,prolactin:12.7,albumin:4.5,total_protein:7.1,globulin:2.6,bun:23,uric_acid:5,glucose_ac:99,t_cholesterol:148,triglyceride:115,rbc:4.89,wbc:4.98,platelet:217,mcv:93.7,mch:32.1,mchc:34.3,neutro:51.8,lympho:39.4,mono:5.6,eosin:2.8,baso:0.4,calcium:9.2,phosphorus:3.1,gfr:100.77,ag_ratio:1.73,t_cho_hdl:3.7},
+  {date:'2021-03-11',total_t:752,e2:54.8,shbg:17.6,hematocrit:48.2,hemoglobin:16.6,alt:29,ast:30,creatinine:1.16,ldl:113,hdl:38,prolactin:20.7,albumin:4.8,total_protein:7.5,globulin:2.7,bun:31,uric_acid:5.3,glucose_ac:95,t_cholesterol:169,triglyceride:162,rbc:5.17,wbc:5.29,platelet:197,mcv:93.2,mch:32.1,mchc:34.4,neutro:48,lympho:42,mono:6.4,eosin:3,baso:0.6,calcium:9.2,phosphorus:3.1,dhea_s:568,gfr:76.15,ag_ratio:1.78,t_cho_hdl:4.45},
+  {date:'2021-05-07',total_t:838,free_t:23.4,e2:52,shbg:17,hematocrit:50.1,hemoglobin:17,alt:17,ast:17,creatinine:1.09,ldl:90,hdl:42,prolactin:15.4,albumin:4.9,total_protein:7.4,globulin:2.5,bun:23,uric_acid:5.4,glucose_ac:93,t_cholesterol:143,triglyceride:109,rbc:5.27,wbc:4.61,platelet:207,mcv:95.1,mch:32.3,mchc:33.9,neutro:54.2,lympho:35.8,mono:6.7,eosin:2.6,baso:0.7,calcium:9.6,phosphorus:3.8,gfr:81.82,ag_ratio:1.96,t_cho_hdl:3.4},
+  {date:'2021-07-15',total_t:515,free_t:14.2,e2:26.8,shbg:14.6,hematocrit:49.5,hemoglobin:16.5,alt:27,ast:26,creatinine:0.89,ldl:89,hdl:37,prolactin:14.5,albumin:4.9,total_protein:7.3,globulin:2.4,bun:21,uric_acid:5.5,glucose_ac:83,t_cholesterol:140,triglyceride:112,rbc:5.24,wbc:4.72,platelet:198,mcv:94.5,mch:31.5,mchc:33.3,neutro:59.6,lympho:29,mono:8.5,eosin:2.5,baso:0.4,calcium:9.1,phosphorus:3.3,gfr:103.39,ag_ratio:2.04,t_cho_hdl:3.78},
+  {date:'2021-08-12',total_t:747,free_t:23,e2:31.4,shbg:9.9,hematocrit:49.7,hemoglobin:16.6,alt:18,ast:25,creatinine:0.94,ldl:103,hdl:39,prolactin:8.71,albumin:5,total_protein:7.6,globulin:2.6,bun:23,uric_acid:5.5,glucose_ac:92,t_cholesterol:159,triglyceride:115,rbc:5.21,wbc:4.49,platelet:213,mcv:95.4,mch:31.9,mchc:33.4,neutro:45.9,lympho:44.3,mono:6.9,eosin:2.2,baso:0.7,calcium:9.3,phosphorus:3.4,gfr:97.07,ag_ratio:1.92,t_cho_hdl:4.08},
+  {date:'2021-09-01',total_t:864,free_t:22.4,e2:51.3,shbg:23.4,hematocrit:48.6,hemoglobin:16.5,alt:44,ast:45,creatinine:1.02,ldl:106,hdl:40,prolactin:11.5,albumin:4.7,total_protein:7.4,globulin:2.7,bun:19,uric_acid:4.2,glucose_ac:85,t_cholesterol:159,triglyceride:115,rbc:5.13,wbc:4.8,platelet:207,mcv:94.7,mch:32.2,mchc:34,neutro:51.3,lympho:37.9,mono:6.5,eosin:3.5,baso:0.8,calcium:9.3,phosphorus:3.3,gfr:88.34,ag_ratio:1.74,t_cho_hdl:3.98},
+  {date:'2021-10-04',total_t:1008,free_t:32.1,e2:46,shbg:15.9,hematocrit:48.6,hemoglobin:16.5,alt:22,ast:25,creatinine:0.95,ldl:119,hdl:34,prolactin:11.4,igf1:234.1,albumin:4.4,total_protein:7,globulin:2.6,bun:19,uric_acid:5.4,glucose_ac:89,t_cholesterol:163,triglyceride:84,rbc:5.11,wbc:4.52,platelet:212,mcv:95.1,mch:32.3,mchc:34,neutro:42.5,lympho:45.8,mono:6.6,eosin:4.4,baso:0.7,calcium:9.3,phosphorus:3.4,gfr:95.89,ag_ratio:1.69,t_cho_hdl:4.79},
+  {date:'2021-10-27',total_t:1256,free_t:41.5,e2:40.7,shbg:11.7,hematocrit:48.8,hemoglobin:16.6,alt:47,ast:47,creatinine:1.05,ldl:115,hdl:32,prolactin:10.1,albumin:4.7,total_protein:7.3,globulin:2.6,bun:26,uric_acid:5.3,glucose_ac:74,t_cholesterol:160,triglyceride:105,rbc:5.25,wbc:4.61,platelet:259,mcv:93,mch:31.6,mchc:34,neutro:53.7,lympho:36.7,mono:5.2,eosin:3.5,baso:0.9,calcium:9.3,phosphorus:3.4,gfr:85.43,ag_ratio:1.81,t_cho_hdl:5},
+  {date:'2021-12-10',e2:48.8,shbg:10,hematocrit:46.1,hemoglobin:16,alt:20,ast:20,creatinine:0.85,ldl:97,hdl:33,prolactin:15.4,albumin:4.6,total_protein:7.2,globulin:2.6,bun:17,uric_acid:4.7,glucose_ac:96,t_cholesterol:138,triglyceride:83,rbc:4.87,wbc:5.79,platelet:209,mcv:94.7,mch:32.9,mchc:34.7,neutro:66.1,lympho:25.6,mono:5.4,eosin:2.6,baso:0.3,calcium:9.1,phosphorus:3.2,dhea_s:482,gfr:109.02,ag_ratio:1.77,t_cho_hdl:4.18,progesterone:0.31},
+  {date:'2022-01-18',total_t:827,free_t:27.9,e2:30.6,shbg:11.3,hematocrit:49.3,hemoglobin:16.5,alt:23,ast:22,creatinine:0.93,ldl:107,hdl:37,prolactin:15.2,albumin:4.4,total_protein:7.2,globulin:2.8,bun:21,uric_acid:5.5,glucose_ac:86,t_cholesterol:161,triglyceride:219,rbc:5.16,wbc:4.65,platelet:206,mcv:95.5,mch:32,mchc:33.5,neutro:57.8,lympho:32.5,mono:5.6,eosin:3.7,baso:0.4,calcium:9.2,phosphorus:3.3,gfr:97.71,crp:0.06,ag_ratio:1.57,t_cho_hdl:4.35},
+  {date:'2022-03-04',total_t:1400,free_t:46.9,e2:84.4,shbg:12.9,hematocrit:49.9,hemoglobin:16.5,alt:38,ast:25,creatinine:0.93,ldl:109,hdl:39,prolactin:9.11,albumin:4.6,total_protein:7.1,globulin:2.5,bun:22,uric_acid:5.4,glucose_ac:90,t_cholesterol:169,triglyceride:108,rbc:5.21,wbc:5.79,platelet:201,mcv:95.8,mch:31.7,mchc:33.1,neutro:58.5,lympho:32,mono:5.7,eosin:3.5,baso:0.3,calcium:9.3,phosphorus:3.5,gfr:97.71,crp:0.06,ag_ratio:1.84,t_cho_hdl:4.33},
+  {date:'2022-04-14',total_t:958,free_t:30.7,e2:48.2,shbg:15.2,hematocrit:49.1,hemoglobin:16.5,alt:32,ast:28,creatinine:0.96,ldl:104,hdl:44,prolactin:10.4,albumin:4.4,total_protein:7.3,globulin:2.9,bun:22,uric_acid:6.1,glucose_ac:94,t_cholesterol:161,triglyceride:85,rbc:5.11,wbc:4.2,platelet:196,mcv:96.1,mch:32.3,mchc:33.6,neutro:50.6,lympho:40,mono:6,eosin:2.9,baso:0.5,calcium:9.4,phosphorus:3.4,gfr:94.2,crp:0.09,ag_ratio:1.52,t_cho_hdl:3.66},
+  {date:'2022-04-30',total_t:868,free_t:26.6,e2:34.5,shbg:15.8,hematocrit:48.5,hemoglobin:16.2,alt:24,ast:17,creatinine:1.05,ldl:91,hdl:39,prolactin:8.32,albumin:4.5,total_protein:7.4,globulin:2.9,bun:20,uric_acid:6.2,glucose_ac:94,t_cholesterol:137,triglyceride:58,rbc:5.02,wbc:3.75,platelet:192,mcv:96.6,mch:32.3,mchc:33.4,neutro:48.8,lympho:41.9,mono:6.4,eosin:2.4,baso:0.5,calcium:9.3,phosphorus:3.3,gfr:84.94,crp:0.05,ag_ratio:1.55,t_cho_hdl:3.51},
+  {date:'2022-07-15',total_t:801,free_t:23.1,e2:58.5,shbg:16.7,hematocrit:47.1,hemoglobin:16.2,alt:28,ast:21,creatinine:1,ldl:96,hdl:41,prolactin:11.6,albumin:4.7,total_protein:7.3,globulin:2.6,bun:22,uric_acid:7.1,glucose_ac:94,t_cholesterol:152,triglyceride:85,rbc:5.02,wbc:3.88,platelet:202,mcv:93.8,mch:32.3,mchc:34.4,neutro:55.7,lympho:34.5,mono:5.7,eosin:3.6,baso:0.5,calcium:9.3,phosphorus:3.7,gfr:89.86,crp:0.04,ag_ratio:1.81,t_cho_hdl:3.71},
+  {date:'2022-08-31',total_t:921,free_t:26.7,e2:52.9,shbg:16.5,hematocrit:48.4,hemoglobin:16.5,alt:47,ast:38,creatinine:1.01,ldl:113,hdl:42,prolactin:9.93,igf1:232.2,albumin:4.8,total_protein:7.6,globulin:2.8,bun:26,uric_acid:6.4,glucose_ac:92,t_cholesterol:183,triglyceride:94,rbc:5.13,wbc:3.87,platelet:203,mcv:94.3,mch:32.2,mchc:34.1,neutro:48.1,lympho:42.4,mono:5.9,eosin:2.8,baso:0.8,calcium:9.5,phosphorus:3.4,gfr:88.84,ag_ratio:1.71,t_cho_hdl:4.36},
+  {date:'2022-09-29',total_t:946,e2:28.7,shbg:22.6,hematocrit:48.4,hemoglobin:16.4,alt:151,ast:93,creatinine:1.1,ldl:103,hdl:42,prolactin:12.5,dht:707,albumin:4.5,total_protein:7.4,globulin:2.9,bun:26,uric_acid:6.7,glucose_ac:98,t_cholesterol:174,triglyceride:142,rbc:5.11,wbc:4.4,platelet:182,mcv:94.7,mch:32.1,mchc:33.9,neutro:53.1,lympho:35.2,mono:7.3,eosin:3.9,baso:0.5,calcium:9.4,phosphorus:2.9,dhea_s:397,gfr:80.5,ag_ratio:1.55,t_cho_hdl:4.14,progesterone:0.22},
+  {date:'2022-11-16',total_t:777,free_t:23.3,e2:30.6,shbg:16.2,hematocrit:50.3,hemoglobin:16.6,alt:61,ast:37,creatinine:1.02,ldl:112,hdl:41,prolactin:6.52,albumin:4.5,total_protein:7.3,globulin:2.8,bun:19,uric_acid:5.7,glucose_ac:87,t_cholesterol:172,triglyceride:129,rbc:5.15,wbc:4.98,platelet:210,mcv:97.7,mch:32.2,mchc:33,neutro:55.7,lympho:36.9,mono:3.8,eosin:3,baso:0.6,calcium:9.1,phosphorus:2.8,gfr:87.83,crp:0.04,ag_ratio:1.61,t_cho_hdl:4.2}
+];
 
 // === Dose Calculator ===
 const calcDose = (mgNeeded, concMgPerMl) => {
@@ -3416,7 +3515,14 @@ function SmartPage({ data, updateData, selectedDate }) {
 
   // Blood work state
   const [bloodWork, setBloodWork] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('blood_work') || '[]'); } catch { return []; }
+    try {
+      const saved = JSON.parse(localStorage.getItem('blood_work') || '[]');
+      // Merge imported data: imported entries are base, saved entries override by date
+      const byDate = {};
+      IMPORTED_BLOOD_WORK.forEach(e => { byDate[e.date] = { ...e, _src: 'import' }; });
+      saved.forEach(e => { byDate[e.date] = { ...byDate[e.date], ...e, _src: 'user' }; });
+      return Object.values(byDate).sort((a,b) => a.date.localeCompare(b.date));
+    } catch { return [...IMPORTED_BLOOD_WORK]; }
   });
   const [showBloodForm, setShowBloodForm] = useState(false);
   const [bloodForm, setBloodForm] = useState(() => {
@@ -3826,24 +3932,33 @@ function SmartPage({ data, updateData, selectedDate }) {
               <input type="date" value={bloodForm.date} onChange={e => setBloodForm(f => ({...f, date: e.target.value}))}
                 style={{background:'var(--card2)',border:'1px solid var(--border)',borderRadius:6,padding:'8px',color:'var(--text)',fontSize:'0.9em'}} />
             </div>
-            {BLOOD_MARKERS.map(m => {
-              const status = getMarkerStatus(m, bloodForm[m.key]);
+            {BLOOD_MARKER_GROUPS.map(g => {
+              const groupMarkers = BLOOD_MARKERS.filter(m => m.group === g.key);
+              if (!groupMarkers.length) return null;
               return (
-                <div className="marker-row" key={m.key}>
-                  <div className="marker-label">
-                    <span style={{color: m.color}}>{m.label}</span>
-                    <div className="marker-range">{m.low}-{m.high} {m.unit}</div>
-                  </div>
-                  <div className="marker-value">
-                    <input type="number" inputMode="decimal" placeholder={m.unit}
-                      value={bloodForm[m.key] || ''}
-                      onChange={e => setBloodForm(f => ({...f, [m.key]: e.target.value}))} />
-                  </div>
-                  {status && (
-                    <span className="marker-status" style={{background: `${status.color}22`, color: status.color}}>
-                      {status.label}
-                    </span>
-                  )}
+                <div key={g.key} style={{marginBottom:10}}>
+                  <div style={{fontSize:'0.82em',fontWeight:600,color:'var(--blue)',padding:'6px 0',borderBottom:'1px solid var(--border)',marginBottom:6}}>{g.label}</div>
+                  {groupMarkers.map(m => {
+                    const status = getMarkerStatus(m, bloodForm[m.key]);
+                    return (
+                      <div className="marker-row" key={m.key}>
+                        <div className="marker-label">
+                          <span style={{color: m.color}}>{m.label}</span>
+                          <div className="marker-range">{m.low}-{m.high} {m.unit}</div>
+                        </div>
+                        <div className="marker-value">
+                          <input type="number" inputMode="decimal" placeholder={m.unit}
+                            value={bloodForm[m.key] || ''}
+                            onChange={e => setBloodForm(f => ({...f, [m.key]: e.target.value}))} />
+                        </div>
+                        {status && (
+                          <span className="marker-status" style={{background: `${status.color}22`, color: status.color}}>
+                            {status.label}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })}
@@ -3873,15 +3988,26 @@ function SmartPage({ data, updateData, selectedDate }) {
                       ⚠️ 異常項目：{alerts.map(m => `${m.label} ${bw[m.key]}${m.unit}`).join('、')}
                     </div>
                   )}
-                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:3,fontSize:'0.78em'}}>
-                    {BLOOD_MARKERS.filter(m => bw[m.key]).map(m => {
-                      const s = getMarkerStatus(m, bw[m.key]);
+                  <div style={{fontSize:'0.78em'}}>
+                    {BLOOD_MARKER_GROUPS.map(g => {
+                      const gm = BLOOD_MARKERS.filter(m => m.group === g.key && bw[m.key] !== undefined && bw[m.key] !== '' && bw[m.key] !== null);
+                      if (!gm.length) return null;
                       return (
-                        <div key={m.key} style={{display:'flex',justifyContent:'space-between',padding:'2px 0'}}>
-                          <span style={{color:'var(--text2)'}}>{m.label}</span>
-                          <span style={{color: s?.color || 'var(--text)', fontWeight: s?.status?.includes('critical') ? 700 : 400}}>
-                            {bw[m.key]} {m.unit}
-                          </span>
+                        <div key={g.key} style={{marginBottom:4}}>
+                          <div style={{fontSize:'0.72em',color:'var(--blue)',fontWeight:600,padding:'3px 0'}}>{g.label}</div>
+                          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:2}}>
+                            {gm.map(m => {
+                              const s = getMarkerStatus(m, bw[m.key]);
+                              return (
+                                <div key={m.key} style={{display:'flex',justifyContent:'space-between',padding:'1px 0'}}>
+                                  <span style={{color:'var(--text2)'}}>{m.label}</span>
+                                  <span style={{color: s?.color || 'var(--text)', fontWeight: s?.status?.includes('critical') ? 700 : 400}}>
+                                    {bw[m.key]} {m.unit}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
                       );
                     })}
@@ -4638,7 +4764,7 @@ function MorePage({ data, updateData }) {
       <AutoSleepImport data={data} updateData={updateData} />
 
       <div className="card" style={{fontSize:'0.78em',color:'var(--text2)'}}>
-        用藥追蹤 App v8.1 — 雲端備份<br/>
+        用藥追蹤 App v8.2 — 驗血報告匯入<br/>
         本工具僅供個人紀錄用途，不構成醫療建議。
       </div>
     </div>
