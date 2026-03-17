@@ -3818,8 +3818,243 @@ function SmartPage({ data, updateData, selectedDate }) {
   const saveInv = (inv) => { setInventory(inv); saveInventory(inv); };
   const saveProts = (p) => { setProtocols(p); saveProtocols(p); };
 
+  // === AI Dosage Advisor ===
+  const AI_KEY_STORE = 'ai_api_key';
+  const AI_CHAT_STORE = 'ai_chat_history';
+  const [aiKey, setAiKey] = useState(() => localStorage.getItem(AI_KEY_STORE) || '');
+  const [aiChat, setAiChat] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(AI_CHAT_STORE) || '[]'); } catch { return []; }
+  });
+  const [aiInput, setAiInput] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [showAiSetup, setShowAiSetup] = useState(false);
+  const aiChatEndRef = useRef(null);
+
+  useEffect(() => {
+    if (aiChatEndRef.current) aiChatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+  }, [aiChat]);
+
+  const buildAiContext = () => {
+    const lines = [];
+    // Current protocol
+    const proto = loadDailyProtocol();
+    if (proto?.drugs && Object.keys(proto.drugs).length) {
+      lines.push('【目前用藥菜單】');
+      Object.entries(proto.drugs).forEach(([k, v]) => {
+        const d = DRUGS.find(x => x.key === k);
+        if (d && v > 0) lines.push(`  ${d.label}: ${v} ${d.unit}${proto.drugTimes?.[k] ? ' (' + proto.drugTimes[k] + ')' : ''}`);
+      });
+    }
+    // Recent 7 days data
+    const recent = Object.keys(data).sort().slice(-7);
+    if (recent.length) {
+      lines.push('\n【最近 7 天紀錄摘要】');
+      recent.forEach(d => {
+        const e = data[d];
+        const parts = [d];
+        if (e.drugs) {
+          const dstr = Object.entries(e.drugs).filter(([,v])=>v>0).map(([k,v])=>{const dr=DRUGS.find(x=>x.key===k);return dr?`${dr.label}${v}${dr.unit}`:''}).filter(Boolean).join(', ');
+          if (dstr) parts.push('💉' + dstr);
+        }
+        if (e.noInjection) parts.push('休息日');
+        if (e.morningScores) {
+          const ms = Object.entries(e.morningScores).map(([k,v]) => {
+            const m = MORNING_CHECKIN.find(x=>x.key===k);
+            return m ? `${m.label}:${m.levels[v]||v}` : '';
+          }).filter(Boolean).join(', ');
+          if (ms) parts.push('🌅' + ms);
+        }
+        if (e.eveningScores) {
+          const es = Object.entries(e.eveningScores).map(([k,v]) => {
+            const m = EVENING_CHECKIN.find(x=>x.key===k);
+            return m ? `${m.label}:${m.levels[v]||v}` : '';
+          }).filter(Boolean).join(', ');
+          if (es) parts.push('🌙' + es);
+        }
+        if (e.adhocSymptoms?.length) {
+          const syms = e.adhocSymptoms.map(k => ADHOC_SYMPTOMS.find(x=>x.key===k)?.label || k).join(', ');
+          parts.push('⚠️' + syms);
+        }
+        if (e.symptomNote) parts.push('📝' + e.symptomNote);
+        if (e.weight) parts.push(`⚖️${e.weight}kg`);
+        lines.push('  ' + parts.join(' | '));
+      });
+    }
+    // Latest blood work
+    if (bloodWork.length) {
+      const latest = bloodWork[bloodWork.length - 1];
+      lines.push(`\n【最近驗血 ${latest.date}】`);
+      BLOOD_MARKERS.forEach(m => {
+        if (latest[m.key] !== undefined && latest[m.key] !== '') {
+          lines.push(`  ${m.label}: ${latest[m.key]} ${m.unit}`);
+        }
+      });
+    }
+    // PK estimate
+    const levels = calcPKLevels(data, 7);
+    if (levels.length) {
+      const todayLevel = levels[levels.length - 1];
+      if (todayLevel) lines.push(`\n【今日藥動學預估】\n  活性 T: ${todayLevel.totalT.toFixed(1)}mg | E2 指數: ${todayLevel.e2.toFixed(1)}`);
+    }
+    return lines.join('\n');
+  };
+
+  const sendAiMessage = async () => {
+    if (!aiInput.trim() || !aiKey) return;
+    const userMsg = aiInput.trim();
+    setAiInput('');
+    const newChat = [...aiChat, { role: 'user', content: userMsg }];
+    setAiChat(newChat);
+    setAiLoading(true);
+
+    const systemPrompt = `你是一位經驗豐富的 TRT/AAS（睾酮替代療法/合成代謝類固醇）劑量顧問。用戶正在使用一個用藥追蹤 App 記錄每日注射、症狀和驗血數據。
+
+你的角色：
+- 根據用戶的症狀、驗血報告和用藥紀錄，分析並建議劑量調整
+- 解釋藥物動力學（半衰期、穩態、峰谷值）
+- 分析 E2/T 平衡、AI（芳香化酶抑制劑）劑量需求
+- 關注關鍵指標：晨勃、水腫、關節感、情緒、性慾、血脂、肝腎功能
+- 提供具體的劑量調整建議（增減多少、頻率變更等）
+- 用繁體中文回答，語氣專業但易懂
+
+重要原則：
+- 你不是醫生，所有建議都是參考性質
+- 如果症狀嚴重（如胸部硬塊、嚴重水腫、肝指數異常高），建議就醫
+- 劑量調整建議要循序漸進，不要一次大幅改變
+- 結合驗血數據和主觀症狀綜合判斷
+
+以下是用戶的完整資料：
+${buildAiContext()}`;
+
+    try {
+      const messages = newChat.map(m => ({ role: m.role, content: m.content }));
+      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': aiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 2048,
+          system: systemPrompt,
+          messages
+        })
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error?.message || `API Error ${resp.status}`);
+      }
+      const result = await resp.json();
+      const aiReply = result.content?.[0]?.text || '（無回應）';
+      const finalChat = [...newChat, { role: 'assistant', content: aiReply }];
+      setAiChat(finalChat);
+      localStorage.setItem(AI_CHAT_STORE, JSON.stringify(finalChat.slice(-20))); // keep last 20 messages
+    } catch (e) {
+      const finalChat = [...newChat, { role: 'assistant', content: `❌ 錯誤：${e.message}` }];
+      setAiChat(finalChat);
+    }
+    setAiLoading(false);
+  };
+
   return (
     <div className="page">
+
+      {/* AI Dosage Advisor */}
+      <div className="card" style={{border:'1px solid var(--purple)'}}>
+        <h3 style={{display:'flex',justifyContent:'space-between',alignItems:'center',color:'var(--purple)'}}>
+          🤖 AI 劑量顧問
+          <button onClick={() => setShowAiSetup(!showAiSetup)}
+            style={{background:'var(--card2)',border:'1px solid var(--border)',borderRadius:8,padding:'3px 8px',
+              color: aiKey ? 'var(--green)' : 'var(--orange)',fontSize:'0.7em',cursor:'pointer'}}>
+            {aiKey ? '🔑 已設定' : '⚙️ 設定 API Key'}
+          </button>
+        </h3>
+        <p style={{fontSize:'0.75em',color:'var(--text2)',marginBottom:8}}>
+          用自然語言討論你的用藥方案，AI 會根據你所有的紀錄和驗血數據提供建議
+        </p>
+
+        {showAiSetup && (
+          <div style={{background:'var(--card2)',borderRadius:10,padding:12,marginBottom:10,border:'1px solid var(--purple)'}}>
+            <div style={{fontSize:'0.78em',color:'var(--purple)',marginBottom:6,fontWeight:600}}>🔑 Anthropic API Key</div>
+            <p style={{fontSize:'0.7em',color:'var(--text2)',marginBottom:8}}>
+              到 <a href="https://console.anthropic.com/settings/keys" target="_blank" style={{color:'var(--blue)'}}>console.anthropic.com</a> 取得 API Key（sk-ant-...）
+            </p>
+            <input type="password" placeholder="sk-ant-api03-..."
+              value={aiKey} onChange={e => setAiKey(e.target.value)}
+              style={{width:'100%',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:8,padding:'8px 10px',
+                color:'var(--text)',fontSize:'0.85em',outline:'none',marginBottom:6,fontFamily:'monospace'}} />
+            <div style={{display:'flex',gap:6}}>
+              <button onClick={() => { localStorage.setItem(AI_KEY_STORE, aiKey); setShowAiSetup(false); }}
+                style={{flex:1,padding:'6px',background:'var(--purple)',color:'#fff',border:'none',borderRadius:8,fontSize:'0.82em',cursor:'pointer'}}>
+                儲存
+              </button>
+              <button onClick={() => { setAiChat([]); localStorage.removeItem(AI_CHAT_STORE); }}
+                style={{padding:'6px 10px',background:'var(--card)',border:'1px solid var(--border)',borderRadius:8,fontSize:'0.82em',cursor:'pointer',color:'var(--text2)'}}>
+                清除對話
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Chat messages */}
+        <div style={{maxHeight:400,overflowY:'auto',marginBottom:8,scrollBehavior:'smooth'}}>
+          {aiChat.length === 0 && (
+            <div style={{textAlign:'center',padding:'20px 10px',color:'var(--text2)',fontSize:'0.82em'}}>
+              <div style={{fontSize:'1.8em',marginBottom:8}}>💬</div>
+              試試問：<br/>
+              <span style={{color:'var(--blue)'}}>「我最近晨勃很弱，E2 是不是太高？」</span><br/>
+              <span style={{color:'var(--blue)'}}>「Sustanon 要不要改成 E3D？」</span><br/>
+              <span style={{color:'var(--blue)'}}>「幫我看看最近的驗血報告有沒有問題」</span><br/>
+              <span style={{color:'var(--blue)'}}>「我覺得水腫變嚴重了，AI 要加嗎？」</span>
+            </div>
+          )}
+          {aiChat.map((msg, i) => (
+            <div key={i} style={{marginBottom:8,display:'flex',flexDirection:'column',
+              alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start'}}>
+              <div style={{
+                maxWidth:'88%',padding:'10px 14px',borderRadius: msg.role === 'user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
+                background: msg.role === 'user' ? 'var(--blue)' : 'var(--card2)',
+                color: msg.role === 'user' ? '#fff' : 'var(--text)',
+                fontSize:'0.85em',lineHeight:'1.6',whiteSpace:'pre-wrap',wordBreak:'break-word'
+              }}>
+                {msg.content}
+              </div>
+              <div style={{fontSize:'0.6em',color:'var(--text2)',marginTop:2,padding:'0 4px'}}>
+                {msg.role === 'user' ? '你' : '🤖 AI 顧問'}
+              </div>
+            </div>
+          ))}
+          {aiLoading && (
+            <div style={{display:'flex',alignItems:'flex-start',marginBottom:8}}>
+              <div style={{padding:'10px 14px',borderRadius:'14px 14px 14px 4px',background:'var(--card2)',fontSize:'0.85em',color:'var(--text2)'}}>
+                ⏳ 分析中...
+              </div>
+            </div>
+          )}
+          <div ref={aiChatEndRef} />
+        </div>
+
+        {/* Input */}
+        <div style={{display:'flex',gap:6}}>
+          <textarea value={aiInput} onChange={e => setAiInput(e.target.value)}
+            placeholder={aiKey ? '描述你的症狀或問題...' : '請先設定 API Key'}
+            disabled={!aiKey || aiLoading}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAiMessage(); } }}
+            style={{flex:1,background:'var(--card2)',border:'1px solid var(--border)',borderRadius:10,padding:'10px 12px',
+              color:'var(--text)',fontSize:'0.88em',outline:'none',resize:'none',minHeight:42,maxHeight:120,
+              fontFamily:'inherit',opacity: (!aiKey||aiLoading) ? 0.5 : 1}} />
+          <button onClick={sendAiMessage} disabled={!aiKey || aiLoading || !aiInput.trim()}
+            style={{padding:'0 16px',background: (!aiKey||aiLoading||!aiInput.trim()) ? 'var(--card2)' : 'var(--purple)',
+              color: (!aiKey||aiLoading||!aiInput.trim()) ? 'var(--text2)' : '#fff',
+              border:'none',borderRadius:10,fontSize:'0.9em',cursor:'pointer',transition:'all 0.2s',flexShrink:0}}>
+            ➤
+          </button>
+        </div>
+      </div>
+
       {/* Pharmacokinetic Curve - Total */}
       <div className="card">
         <h3>💉 藥物動力學曲線 — 總覽</h3>
@@ -4831,7 +5066,7 @@ function MorePage({ data, updateData }) {
       <AutoSleepImport data={data} updateData={updateData} />
 
       <div className="card" style={{fontSize:'0.78em',color:'var(--text2)'}}>
-        用藥追蹤 App v8.4 — 症狀備註 + 今日沒打針<br/>
+        用藥追蹤 App v8.5 — AI 劑量顧問<br/>
         本工具僅供個人紀錄用途，不構成醫療建議。
       </div>
     </div>
