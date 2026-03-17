@@ -2044,6 +2044,7 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
   const [morningScores, setMorningScores] = useState(entry.morningScores || {});
   const [eveningScores, setEveningScores] = useState(entry.eveningScores || {});
   const [adhocSymptoms, setAdhocSymptoms] = useState(entry.adhocSymptoms || []);
+  const [symptomNote, setSymptomNote] = useState(entry.symptomNote || '');
   const [showAdhoc, setShowAdhoc] = useState(false);
   const [checkinTab, setCheckinTab] = useState('morning');
   const [note, setNote] = useState(entry.note || '');
@@ -2060,6 +2061,7 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
   const [sleepImportMsg, setSleepImportMsg] = useState('');
   // Injection site rotation
   const [injectionSite, setInjectionSite] = useState(entry.injectionSite || '');
+  const [noInjection, setNoInjection] = useState(entry.noInjection || false);
   // Collapsible drug categories (only show used + testosterone by default)
   const [expandedCats, setExpandedCats] = useState(() => {
     const used = new Set();
@@ -2092,9 +2094,11 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
     setSleep({ ...defaultSleep, ...(e.sleep || {}) });
     setSleepImportMsg('');
     setInjectionSite(e.injectionSite || '');
+    setNoInjection(e.noInjection || false);
     setMorningScores(e.morningScores || {});
     setEveningScores(e.eveningScores || {});
     setAdhocSymptoms(e.adhocSymptoms || []);
+    setSymptomNote(e.symptomNote || '');
     setShowAdhoc(false);
     // Load photos for this date (async IndexedDB)
     setFacePhoto(null); setBodyPhoto(null);
@@ -2194,8 +2198,9 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
     const cleanMorning = hasMorning ? morningScores : undefined;
     const cleanEvening = hasEvening ? eveningScores : undefined;
     const cleanAdhoc = hasAdhoc ? adhocSymptoms : undefined;
-    const newData = { ...data, [selectedDate]: { ...existing, drugs: cleanDrugs, drugTimes: cleanTimes, symptoms, note, sleep: cleanSleep, weight: cleanWeight, injectionSite: cleanSite, morningScores: cleanMorning, eveningScores: cleanEvening, adhocSymptoms: cleanAdhoc, updatedAt: new Date().toISOString() } };
-    if (!hasAnySymptoms && !Object.keys(cleanDrugs).length && !note && !existing.hasPhotos && !hasSleep && !cleanWeight && !cleanSite && !hasMorning && !hasEvening && !hasAdhoc) delete newData[selectedDate];
+    const cleanSymNote = symptomNote.trim() || undefined;
+    const newData = { ...data, [selectedDate]: { ...existing, drugs: cleanDrugs, drugTimes: cleanTimes, symptoms, note, sleep: cleanSleep, weight: cleanWeight, injectionSite: cleanSite, morningScores: cleanMorning, eveningScores: cleanEvening, adhocSymptoms: cleanAdhoc, symptomNote: cleanSymNote, noInjection: noInjection || undefined, updatedAt: new Date().toISOString() } };
+    if (!hasAnySymptoms && !Object.keys(cleanDrugs).length && !note && !existing.hasPhotos && !hasSleep && !cleanWeight && !cleanSite && !hasMorning && !hasEvening && !hasAdhoc && !cleanSymNote && !noInjection) delete newData[selectedDate];
     updateData(newData);
     setSaveStatus('saved');
     setTimeout(() => setSaveStatus(''), 1500);
@@ -2475,6 +2480,19 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
           </div>
         )}
 
+        {/* No injection today toggle */}
+        <div style={{marginBottom:10}}>
+          <button onClick={() => { setNoInjection(!noInjection); if (!noInjection) { setDrugs({}); setDrugTimes({}); } }}
+            style={{width:'100%',padding:'10px',borderRadius:10,
+              border: noInjection ? '2px solid var(--green)' : '1px solid var(--border)',
+              background: noInjection ? 'rgba(122,158,142,0.1)' : 'var(--card2)',
+              color: noInjection ? 'var(--green)' : 'var(--text2)',
+              fontSize:'0.88em',fontWeight: noInjection ? 600 : 400,cursor:'pointer',transition:'all 0.2s'}}>
+            {noInjection ? '✅ 今日沒有注射（休息日）' : '🚫 今日沒有打針'}
+          </button>
+        </div>
+
+        {!noInjection && <>
         {/* Protocol drugs (auto-filled, prominent) */}
         {(() => {
           const protocolKeys = Object.keys(protocolState.drugs || {}).filter(k => protocolState.drugs[k] > 0);
@@ -2606,6 +2624,7 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
             </>
           );
         })()}
+        </>}
       </div>
 
       {/* Injection Site Rotation */}
@@ -2804,6 +2823,11 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
             )}
           </>
         )}
+        <div style={{marginTop:10}}>
+          <textarea className="note-input" placeholder="症狀備註：自由描述今天身體狀況、感受、觀察..."
+            value={symptomNote} onChange={e => setSymptomNote(e.target.value)}
+            style={{minHeight:50,fontSize:'0.85em'}} />
+        </div>
       </div>
 
       <div className="card">
@@ -4807,7 +4831,7 @@ function MorePage({ data, updateData }) {
       <AutoSleepImport data={data} updateData={updateData} />
 
       <div className="card" style={{fontSize:'0.78em',color:'var(--text2)'}}>
-        用藥追蹤 App v8.3 — 自動雲端同步 + 晨勃/Pump/腦清晰<br/>
+        用藥追蹤 App v8.4 — 症狀備註 + 今日沒打針<br/>
         本工具僅供個人紀錄用途，不構成醫療建議。
       </div>
     </div>
