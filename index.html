@@ -632,6 +632,14 @@ const EVENING_CHECKIN = [
     levels: ['發冷','偏冷','正常','偏熱','很熱','發燒感'],
     significance: 'Tren會升高體溫。異常升高注意肝臟',
     colors: ['#7a94b0','#94afc4','#8aab6e','#c4a05a','#c4956a','#b85c5c'] },
+  { key: 'speech_fluency', label: '講話流暢度', icon: '🗣️',
+    levels: ['結巴/卡頓','不太順','普通','流暢','很順','口若懸河'],
+    significance: '反映認知功能和神經傳導。E2過低或腦霧時會下降',
+    colors: ['#b85c5c','#c4956a','#c4a05a','#8aab6e','#7a9e8e','#6b9aaa'] },
+  { key: 'patience', label: '耐心程度', icon: '🧘',
+    levels: ['極度易怒','沒耐心','偏急躁','正常','很有耐心','超淡定'],
+    significance: 'E2偏高易怒、T過高攻擊性增加。平衡時耐心最佳',
+    colors: ['#b85c5c','#c4956a','#c4a05a','#8aab6e','#7a9e8e','#6b9aaa'] },
 ];
 
 // Ad-hoc notable symptoms (binary, only log when present)
@@ -3826,6 +3834,25 @@ function SmartPage({ data, updateData, selectedDate }) {
   const [aiChat, setAiChat] = useState(() => {
     try { return JSON.parse(localStorage.getItem(AI_CHAT_STORE) || '[]'); } catch { return []; }
   });
+  // Auto-restore chat from Firebase on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const uid = getFirebaseUID();
+        if (_firestore && uid) {
+          const doc = await _firestore.collection('users').doc(uid).collection('meta').doc('ai_chat').get();
+          if (doc.exists) {
+            const cloud = doc.data()?.messages || [];
+            const local = JSON.parse(localStorage.getItem(AI_CHAT_STORE) || '[]');
+            if (cloud.length > local.length) {
+              setAiChat(cloud);
+              localStorage.setItem(AI_CHAT_STORE, JSON.stringify(cloud));
+            }
+          }
+        }
+      } catch(e) { console.warn('[AI Chat] cloud restore failed:', e.message); }
+    })();
+  }, []);
   const [aiInput, setAiInput] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [showAiSetup, setShowAiSetup] = useState(false);
@@ -3952,7 +3979,17 @@ ${buildAiContext()}`;
       const aiReply = result.content?.[0]?.text || '（無回應）';
       const finalChat = [...newChat, { role: 'assistant', content: aiReply }];
       setAiChat(finalChat);
-      localStorage.setItem(AI_CHAT_STORE, JSON.stringify(finalChat.slice(-20))); // keep last 20 messages
+      const toSave = finalChat.slice(-50);
+      localStorage.setItem(AI_CHAT_STORE, JSON.stringify(toSave));
+      // Also save to Firebase
+      try {
+        const uid = getFirebaseUID();
+        if (_firestore && uid) {
+          await _firestore.collection('users').doc(uid).collection('meta').doc('ai_chat').set({
+            messages: toSave, updatedAt: new Date().toISOString()
+          });
+        }
+      } catch(be) { console.warn('[AI Chat] cloud save failed:', be.message); }
     } catch (e) {
       const finalChat = [...newChat, { role: 'assistant', content: `❌ 錯誤：${e.message}` }];
       setAiChat(finalChat);
@@ -3992,7 +4029,7 @@ ${buildAiContext()}`;
                 style={{flex:1,padding:'6px',background:'var(--purple)',color:'#fff',border:'none',borderRadius:8,fontSize:'0.82em',cursor:'pointer'}}>
                 儲存
               </button>
-              <button onClick={() => { setAiChat([]); localStorage.removeItem(AI_CHAT_STORE); }}
+              <button onClick={() => { setAiChat([]); localStorage.removeItem(AI_CHAT_STORE); try { const uid=getFirebaseUID(); if(_firestore&&uid) _firestore.collection('users').doc(uid).collection('meta').doc('ai_chat').delete(); } catch{} }}
                 style={{padding:'6px 10px',background:'var(--card)',border:'1px solid var(--border)',borderRadius:8,fontSize:'0.82em',cursor:'pointer',color:'var(--text2)'}}>
                 清除對話
               </button>
@@ -5067,7 +5104,7 @@ function MorePage({ data, updateData }) {
       <AutoSleepImport data={data} updateData={updateData} />
 
       <div className="card" style={{fontSize:'0.78em',color:'var(--text2)'}}>
-        用藥追蹤 App v8.5 — AI 劑量顧問<br/>
+        用藥追蹤 App v8.6 — AI 對話雲端同步 + 流暢度/耐心<br/>
         本工具僅供個人紀錄用途，不構成醫療建議。
       </div>
     </div>
