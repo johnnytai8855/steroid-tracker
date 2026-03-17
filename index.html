@@ -601,6 +601,14 @@ const MORNING_CHECKIN = [
     levels: ['完全乾','偏乾','正常','偏油','很油','爆油'],
     significance: 'DHT活性指標。出油增加=雄性激素活性高',
     colors: ['#7a94b0','#7a9e8e','#8aab6e','#c4a05a','#c4956a','#b85c5c'] },
+  { key: 'muscle_pump', label: '肌肉充血/Pump', icon: '💪',
+    levels: ['完全無感','微弱','普通','不錯','很強','爆炸Pump'],
+    significance: '反映血液循環與肌肉內糖原。高T+高E2通常Pump更好',
+    colors: ['#b85c5c','#c4956a','#c4a05a','#8aab6e','#7a9e8e','#6b9aaa'] },
+  { key: 'brain_clarity', label: '腦袋清晰度', icon: '🧠',
+    levels: ['腦霧嚴重','很模糊','偏鈍','清楚','很清晰','超級專注'],
+    significance: 'E2過高或過低都會腦霧。T水平正常時認知最佳',
+    colors: ['#b85c5c','#c4956a','#c4a05a','#8aab6e','#7a9e8e','#6b9aaa'] },
 ];
 
 const EVENING_CHECKIN = [
@@ -797,7 +805,7 @@ const cloudBackup = async (uid, data) => {
       chunks: chunks.length, 
       totalDays: dates.length,
       lastBackup: new Date().toISOString(),
-      version: 'v8.1'
+      version: 'v8.3'
     });
     chunks.forEach((chunk, i) => {
       batch.set(docRef.collection('chunks').doc(`chunk_${i}`), { data: JSON.stringify(chunk) });
@@ -809,7 +817,7 @@ const cloudBackup = async (uid, data) => {
       chunks: 0,
       totalDays: Object.keys(data).length,
       lastBackup: new Date().toISOString(),
-      version: 'v8.1'
+      version: 'v8.3'
     });
   }
   
@@ -1926,6 +1934,16 @@ function App() {
   const updateData = useCallback((newData) => {
     setData(newData);
     saveData(newData);
+    // Auto-upload to Firebase after every save
+    (async () => {
+      try {
+        const uid = getFirebaseUID();
+        if (_firestore && uid) {
+          await cloudBackup(uid, newData);
+          console.log('[AutoSync] ⬆️ backed up to cloud');
+        }
+      } catch (e) { console.warn('[AutoSync] backup failed:', e.message); }
+    })();
   }, []);
 
   // Init: migrate photos from localStorage to IndexedDB + auto-import from URL
@@ -1942,6 +1960,31 @@ function App() {
       setAutoImportMsg(`✓ 已自動匯入體重 ${weightResult}kg`);
       setTimeout(() => setAutoImportMsg(''), 4000);
     }
+    // Auto-download from Firebase on app open
+    (async () => {
+      try {
+        const cfg = getFirebaseConfig();
+        if (cfg?.apiKey && cfg?.projectId) {
+          if (!_firestore) initFirebase(cfg);
+          const uid = getFirebaseUID();
+          if (_firestore && uid) {
+            const result = await cloudRestore(uid);
+            if (result?.data && Object.keys(result.data).length > 0) {
+              const local = loadData();
+              const merged = { ...result.data, ...local };
+              // Only update if cloud has data not in local
+              if (Object.keys(merged).length > Object.keys(local).length) {
+                setData(merged);
+                saveData(merged);
+                setAutoImportMsg(`☁️ 已從雲端同步 ${Object.keys(result.data).length} 天紀錄`);
+                setTimeout(() => setAutoImportMsg(''), 3000);
+              }
+            }
+            console.log('[AutoSync] ⬇️ cloud restore checked');
+          }
+        }
+      } catch (e) { console.warn('[AutoSync] restore on open failed:', e.message); }
+    })();
   }, []);
 
   // Icons
@@ -4764,7 +4807,7 @@ function MorePage({ data, updateData }) {
       <AutoSleepImport data={data} updateData={updateData} />
 
       <div className="card" style={{fontSize:'0.78em',color:'var(--text2)'}}>
-        用藥追蹤 App v8.2 — 驗血報告匯入<br/>
+        用藥追蹤 App v8.3 — 自動雲端同步 + 晨勃/Pump/腦清晰<br/>
         本工具僅供個人紀錄用途，不構成醫療建議。
       </div>
     </div>
