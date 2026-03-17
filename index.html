@@ -230,6 +230,56 @@ body{font-family:'Noto Sans TC',-apple-system,'Segoe UI',system-ui,sans-serif;ba
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
 /* Selection */
 ::selection{background:rgba(107,127,153,0.2);color:var(--text)}
+/* Mobile Responsive */
+@media (max-width: 480px) {
+  .page{padding:12px 8px}
+  .card{padding:14px 12px}
+  .drug-row{flex-wrap:wrap;gap:6px}
+  .drug-label{min-width:80px;font-size:0.8em}
+  .drug-input{padding:8px 10px;font-size:0.9em}
+  .score-btns{grid-template-columns:repeat(2,1fr);gap:4px}
+  .score-btn{padding:8px 3px;font-size:0.72em}
+  .blood-grid{grid-template-columns:1fr}
+  .marker-row{flex-wrap:wrap;gap:4px}
+  .marker-label{min-width:100%;font-size:0.8em}
+  .marker-value{width:100%}
+  .marker-value input{width:100%}
+  .sleep-grid{grid-template-columns:1fr}
+  .tabs .tab{font-size:0.62em;padding:6px 2px}
+  .tabs .tab svg{width:18px;height:18px}
+  .header h1{font-size:0.95em}
+  .cal-grid{gap:2px;font-size:0.72em}
+  .cal-day{min-height:44px;padding:3px}
+  .site-grid{gap:4px}
+  .site-btn{padding:5px 8px;font-size:0.72em}
+  .photo-section{flex-direction:column}
+  .photo-slot{min-width:100%}
+  .checkin-label .cl-name{font-size:0.82em}
+  .sym-btn{padding:6px 10px;font-size:0.78em}
+  .save-btn{padding:12px;font-size:0.9em}
+  .action-btn{padding:10px;font-size:0.82em}
+  .period-tabs{gap:4px}
+  .period-tab{padding:5px 10px;font-size:0.78em}
+  .chart-container{height:220px !important}
+  .timeline-grid{grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:4px}
+  .briefing{padding:14px}
+  .calc-row{flex-wrap:wrap}
+  .calc-input{min-width:60px}
+}
+@media (max-width: 360px) {
+  .score-btns{grid-template-columns:repeat(2,1fr)}
+  .tabs .tab{font-size:0.58em}
+  .drug-label{min-width:70px;font-size:0.75em}
+}
+/* Toast notifications */
+.toast-container{position:fixed;top:60px;left:50%;transform:translateX(-50%);z-index:1000;display:flex;flex-direction:column;gap:6px;align-items:center;pointer-events:none}
+.toast{padding:10px 20px;border-radius:10px;font-size:0.88em;box-shadow:0 4px 12px rgba(45,42,38,0.15);animation:toastIn 0.3s ease,toastOut 0.3s ease 2.7s;pointer-events:auto;max-width:90vw;text-align:center}
+.toast.success{background:var(--green);color:#fff}
+.toast.error{background:var(--red);color:#fff}
+.toast.info{background:var(--blue);color:#fff}
+.toast.warning{background:var(--orange);color:#fff}
+@keyframes toastIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes toastOut{from{opacity:1}to{opacity:0}}
 </style>
 </head>
 <body>
@@ -1936,21 +1986,30 @@ function App() {
   const [selectedDate, setSelectedDate] = useState(today());
   const [calMonth, setCalMonth] = useState(() => { const d = new Date(); return [d.getFullYear(), d.getMonth()]; });
   const [saveStatus, setSaveStatus] = useState('');
+  const [syncStatus, setSyncStatus] = useState('');
 
   const [autoImportMsg, setAutoImportMsg] = useState('');
 
   const updateData = useCallback((newData) => {
     setData(newData);
     saveData(newData);
-    // Auto-upload to Firebase after every save
+    setSyncStatus('syncing');
     (async () => {
       try {
         const uid = getFirebaseUID();
         if (_firestore && uid) {
           await cloudBackup(uid, newData);
+          setSyncStatus('synced');
           console.log('[AutoSync] ⬆️ backed up to cloud');
+          setTimeout(() => setSyncStatus(''), 2000);
+        } else {
+          setSyncStatus('');
         }
-      } catch (e) { console.warn('[AutoSync] backup failed:', e.message); }
+      } catch (e) {
+        console.warn('[AutoSync] backup failed:', e.message);
+        setSyncStatus('error');
+        setTimeout(() => setSyncStatus(''), 3000);
+      }
     })();
   }, []);
 
@@ -1979,12 +2038,27 @@ function App() {
             const result = await cloudRestore(uid);
             if (result?.data && Object.keys(result.data).length > 0) {
               const local = loadData();
-              const merged = { ...result.data, ...local };
-              // Only update if cloud has data not in local
-              if (Object.keys(merged).length > Object.keys(local).length) {
+              const merged = { ...local };
+              let syncCount = 0;
+              Object.entries(result.data).forEach(([date, cloudEntry]) => {
+                const localEntry = local[date];
+                if (!localEntry) {
+                  merged[date] = cloudEntry;
+                  syncCount++;
+                } else {
+                  // Compare updatedAt timestamps - pick newer
+                  const cloudTime = cloudEntry.updatedAt ? new Date(cloudEntry.updatedAt).getTime() : 0;
+                  const localTime = localEntry.updatedAt ? new Date(localEntry.updatedAt).getTime() : 0;
+                  if (cloudTime > localTime) {
+                    merged[date] = cloudEntry;
+                    syncCount++;
+                  }
+                }
+              });
+              if (syncCount > 0 || Object.keys(merged).length > Object.keys(local).length) {
                 setData(merged);
                 saveData(merged);
-                setAutoImportMsg(`☁️ 已從雲端同步 ${Object.keys(result.data).length} 天紀錄`);
+                setAutoImportMsg(`☁️ 已從雲端同步 ${syncCount} 天更新紀錄`);
                 setTimeout(() => setAutoImportMsg(''), 3000);
               }
             }
@@ -2005,11 +2079,20 @@ function App() {
     <>
       <div className="header">
         <h1>用藥追蹤</h1>
-        <span style={{color:'var(--text2)',fontSize:'0.85em'}}>{selectedDate}</span>
+        <div style={{display:'flex',alignItems:'center',gap:8}}>
+          {syncStatus === 'syncing' && <span style={{fontSize:'0.7em',color:'var(--blue)'}}>☁️ 同步中...</span>}
+          {syncStatus === 'synced' && <span style={{fontSize:'0.7em',color:'var(--green)'}}>☁️ ✓</span>}
+          {syncStatus === 'error' && <span style={{fontSize:'0.7em',color:'var(--red)'}}>☁️ ✗</span>}
+          <span style={{color:'var(--text2)',fontSize:'0.85em'}}>{selectedDate}</span>
+        </div>
       </div>
 
       {autoImportMsg && (
-        <div style={{position:'fixed',top:60,left:'50%',transform:'translateX(-50%)',background:'var(--green)',color:'#fff',padding:'10px 20px',borderRadius:10,zIndex:999,fontSize:'0.9em',boxShadow:'0 4px 12px rgba(45,42,38,0.12)'}}>{autoImportMsg}</div>
+        <div className="toast-container">
+          <div className={`toast ${autoImportMsg.startsWith('✗') || autoImportMsg.startsWith('❌') ? 'error' : autoImportMsg.startsWith('⚠') ? 'warning' : 'success'}`}>
+            {autoImportMsg}
+          </div>
+        </div>
       )}
 
       {tab === 'record' && <RecordPage data={data} updateData={updateData} selectedDate={selectedDate} setSelectedDate={setSelectedDate} saveStatus={saveStatus} setSaveStatus={setSaveStatus} />}
@@ -3586,6 +3669,8 @@ function SmartPage({ data, updateData, selectedDate }) {
   const pkChart = useRef(null);
   const weightChartRef = useRef(null);
   const weightChart = useRef(null);
+  const bloodChartRef = useRef(null);
+  const bloodChartInst = useRef(null);
   const sortedDates = useMemo(() => Object.keys(data).sort(), [data]);
 
   // Blood work state
@@ -3806,6 +3891,66 @@ function SmartPage({ data, updateData, selectedDate }) {
     return () => { if (weightChart.current) weightChart.current.destroy(); };
   }, [data, sortedDates]);
 
+  // Blood work trend chart
+  useEffect(() => {
+    if (!bloodChartRef.current || bloodWork.length < 2) return;
+    if (bloodChartInst.current) bloodChartInst.current.destroy();
+
+    // Find markers that have data in at least 2 reports
+    const markersWithData = BLOOD_MARKERS.filter(m => {
+      const count = bloodWork.filter(bw => bw[m.key] !== undefined && bw[m.key] !== '' && bw[m.key] !== null).length;
+      return count >= 2;
+    });
+    if (!markersWithData.length) return;
+
+    // Default: show key markers (Total T, E2, HCT, ALT, AST, Creatinine)
+    const defaultKeys = ['total_t', 'e2', 'hct', 'alt', 'ast', 'creatinine', 'free_t', 'shbg'];
+    const showMarkers = markersWithData.filter(m => defaultKeys.includes(m.key)).slice(0, 6);
+    if (!showMarkers.length) return;
+
+    const dates = bloodWork.map(bw => bw.date);
+    const datasets = showMarkers.map(m => ({
+      label: m.label,
+      data: bloodWork.map(bw => bw[m.key] !== undefined && bw[m.key] !== '' ? Number(bw[m.key]) : null),
+      borderColor: m.color,
+      backgroundColor: m.color + '22',
+      fill: false,
+      tension: 0.3,
+      pointRadius: 4,
+      pointBackgroundColor: m.color,
+      borderWidth: 2,
+      spanGaps: true
+    }));
+
+    bloodChartInst.current = new Chart(bloodChartRef.current, {
+      type: 'line',
+      data: { labels: dates.map(d => d.slice(5)), datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { color: '#5c5850', font: { size: 9 } } },
+          tooltip: {
+            callbacks: {
+              afterLabel: (ctx) => {
+                const m = showMarkers[ctx.datasetIndex];
+                if (!m) return '';
+                const val = ctx.parsed.y;
+                if (val === null) return '';
+                const status = val < m.critical_low ? '🔴 嚴重偏低' : val < m.low ? '🟡 偏低' : val > m.critical_high ? '🔴 嚴重偏高' : val > m.high ? '🟡 偏高' : '✅ 正常';
+                return `範圍: ${m.low}-${m.high} ${m.unit} ${status}`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: { ticks: { color: '#8a847b' }, grid: { color: '#e8e3dc' } },
+          y: { ticks: { color: '#8a847b' }, grid: { color: '#e8e3dc' } }
+        }
+      }
+    });
+    return () => { if (bloodChartInst.current) bloodChartInst.current.destroy(); };
+  }, [bloodWork]);
+
   // Pattern detection
   const patterns = useMemo(() => detectPatterns(data), [data]);
   const doseSuggestions = useMemo(() => generateDoseSuggestion(data), [data]);
@@ -4013,6 +4158,9 @@ ${buildAiContext()}`;
         <p style={{fontSize:'0.75em',color:'var(--text2)',marginBottom:8}}>
           用自然語言討論你的用藥方案，AI 會根據你所有的紀錄和驗血數據提供建議
         </p>
+        <div style={{background:'rgba(196,149,106,0.12)',borderRadius:6,padding:'6px 10px',marginBottom:8,fontSize:'0.7em',color:'var(--orange)',lineHeight:1.5}}>
+          🔒 安全提示：API Key 目前存在前端。如需更安全，可建立 Cloudflare Worker 作為 proxy，<a href="https://developers.cloudflare.com/workers/" target="_blank" style={{color:'var(--blue)'}}>了解更多</a>
+        </div>
 
         {showAiSetup && (
           <div style={{background:'var(--card2)',borderRadius:10,padding:12,marginBottom:10,border:'1px solid var(--purple)'}}>
@@ -4258,6 +4406,50 @@ ${buildAiContext()}`;
           </div>
         )}
       </div>
+
+      {/* Blood Work Trends */}
+      {bloodWork.length >= 2 && (
+        <div className="card">
+          <h3>📈 驗血趨勢圖</h3>
+          <p style={{fontSize:'0.78em',color:'var(--text2)',marginBottom:8}}>追蹤關鍵指標隨時間的變化趨勢（點擊圖例可顯示/隱藏）</p>
+          <div className="chart-container" style={{height:320}}><canvas ref={bloodChartRef}></canvas></div>
+
+          {/* Critical alerts from latest blood work */}
+          {(() => {
+            const latest = bloodWork[bloodWork.length - 1];
+            const prev = bloodWork.length >= 2 ? bloodWork[bloodWork.length - 2] : null;
+            const alerts = [];
+            BLOOD_MARKERS.forEach(m => {
+              const val = Number(latest[m.key]);
+              if (isNaN(val) || latest[m.key] === '' || latest[m.key] === undefined) return;
+              if (val <= m.critical_low) alerts.push({ marker: m, val, status: 'critical_low', icon: '🔴', text: `${m.label} ${val} ${m.unit} — 嚴重偏低（參考 ${m.low}-${m.high}）` });
+              else if (val >= m.critical_high) alerts.push({ marker: m, val, status: 'critical_high', icon: '🔴', text: `${m.label} ${val} ${m.unit} — 嚴重偏高（參考 ${m.low}-${m.high}）` });
+              else if (val < m.low) alerts.push({ marker: m, val, status: 'low', icon: '🟡', text: `${m.label} ${val} ${m.unit} — 偏低（參考 ${m.low}-${m.high}）` });
+              else if (val > m.high) alerts.push({ marker: m, val, status: 'high', icon: '🟡', text: `${m.label} ${val} ${m.unit} — 偏高（參考 ${m.low}-${m.high}）` });
+              // Check trend vs previous
+              if (prev && prev[m.key] !== undefined && prev[m.key] !== '') {
+                const prevVal = Number(prev[m.key]);
+                const change = val - prevVal;
+                const pctChange = prevVal !== 0 ? (change / prevVal * 100) : 0;
+                if (Math.abs(pctChange) > 20) {
+                  alerts.push({ marker: m, val, status: 'trend', icon: pctChange > 0 ? '📈' : '📉', text: `${m.label} ${pctChange > 0 ? '上升' : '下降'} ${Math.abs(pctChange).toFixed(0)}%（${prevVal} → ${val} ${m.unit}）` });
+                }
+              }
+            });
+            if (!alerts.length) return <div style={{background:'rgba(122,158,142,0.12)',borderRadius:8,padding:10,fontSize:'0.82em',color:'var(--green)',marginTop:8}}>✅ 最新報告 ({latest.date}) 所有數值正常範圍內</div>;
+            return (
+              <div style={{marginTop:8}}>
+                <div style={{fontSize:'0.85em',fontWeight:600,color:'var(--red)',marginBottom:6}}>⚠️ 最新報告 ({latest.date}) 注意事項：</div>
+                {alerts.map((a, i) => (
+                  <div key={i} style={{fontSize:'0.82em',padding:'4px 8px',marginBottom:3,borderRadius:6,background: a.status.includes('critical') ? 'rgba(184,92,92,0.12)' : a.status === 'trend' ? 'rgba(107,127,153,0.08)' : 'rgba(196,149,106,0.12)',color: a.status.includes('critical') ? 'var(--red)' : a.status === 'trend' ? 'var(--blue)' : 'var(--orange)'}}>
+                    {a.icon} {a.text}
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
+      )}
 
       {/* Blood Work with Alert Thresholds */}
       <div className="card">
@@ -4816,7 +5008,17 @@ function CloudSyncPanel({ data, updateData }) {
     try {
       saveFirebaseUID(uid.trim());
       const result = await cloudRestore(uid.trim());
-      const merged = { ...data, ...result.data };
+      const merged = { ...data };
+      Object.entries(result.data).forEach(([date, cloudEntry]) => {
+        const localEntry = data[date];
+        if (!localEntry) {
+          merged[date] = cloudEntry;
+        } else {
+          const cloudTime = cloudEntry.updatedAt ? new Date(cloudEntry.updatedAt).getTime() : 0;
+          const localTime = localEntry.updatedAt ? new Date(localEntry.updatedAt).getTime() : 0;
+          if (cloudTime > localTime) merged[date] = cloudEntry;
+        }
+      });
       updateData(merged);
       setLastBackup(result.lastBackup ? new Date(result.lastBackup).toLocaleString('zh-TW') : '');
       setStatus(`✓ 還原成功！合併後共 ${Object.keys(merged).length} 天紀錄`);
@@ -5104,7 +5306,7 @@ function MorePage({ data, updateData }) {
       <AutoSleepImport data={data} updateData={updateData} />
 
       <div className="card" style={{fontSize:'0.78em',color:'var(--text2)'}}>
-        用藥追蹤 App v8.6 — AI 對話雲端同步 + 流暢度/耐心<br/>
+        用藥追蹤 App v9.0 — 血液驗血趨勢圖 + 智能衝突解決 + 移動響應式設計<br/>
         本工具僅供個人紀錄用途，不構成醫療建議。
       </div>
     </div>
