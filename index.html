@@ -2116,15 +2116,9 @@ function App() {
 
 function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatus, setSaveStatus }) {
   const entry = data[selectedDate] || { drugs: {}, symptoms: {}, note: '' };
-  // Auto-fill from daily protocol if this date has no existing drug data
+  // Protocol available for manual fill (no longer auto-fills to prevent false records)
   const dailyProtocol = useMemo(() => loadDailyProtocol(), []);
-  const autoFilledDrugs = useMemo(() => {
-    if (Object.keys(entry.drugs || {}).length > 0) return entry.drugs;
-    // Only auto-fill for today or future dates, not past
-    if (selectedDate >= today() && Object.keys(dailyProtocol.drugs || {}).length > 0) return { ...dailyProtocol.drugs };
-    return entry.drugs || {};
-  }, [entry.drugs, selectedDate]);
-  const [drugs, setDrugs] = useState(autoFilledDrugs);
+  const [drugs, setDrugs] = useState(entry.drugs || {});
   const [drugTimes, setDrugTimes] = useState(entry.drugTimes || {});
   const [showProtocolSetup, setShowProtocolSetup] = useState(false);
   const [showAllDrugs, setShowAllDrugs] = useState(false);
@@ -2165,19 +2159,9 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
 
   useEffect(() => {
     const e = data[selectedDate] || { drugs: {}, symptoms: {}, note: '' };
-    const protocol = loadDailyProtocol();
-    // Auto-fill: if no existing drug data for this date, use daily protocol
-    const hasExistingDrugs = Object.keys(e.drugs || {}).length > 0 && Object.values(e.drugs).some(v => v > 0);
-    if (hasExistingDrugs) {
-      setDrugs(e.drugs);
-      setDrugTimes(e.drugTimes || {});
-    } else if (Object.keys(protocol.drugs || {}).length > 0) {
-      setDrugs({ ...protocol.drugs });
-      setDrugTimes(protocol.drugTimes || {});
-    } else {
-      setDrugs(e.drugs || {});
-      setDrugTimes(e.drugTimes || {});
-    }
+    // Load existing drug data only (no auto-fill from protocol to prevent false records)
+    setDrugs(e.drugs || {});
+    setDrugTimes(e.drugTimes || {});
     setSymptoms(normalizeSymptoms(e.symptoms));
     setActivePeriod('allday');
     setNote(e.note || '');
@@ -2584,16 +2568,24 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
         </div>
 
         {!noInjection && <>
-        {/* Protocol drugs (auto-filled, prominent) */}
+        {/* Quick fill from protocol */}
         {(() => {
           const protocolKeys = Object.keys(protocolState.drugs || {}).filter(k => protocolState.drugs[k] > 0);
+          const hasDrugsEntered = Object.values(drugs).some(v => parseFloat(v) > 0);
           const nonProtocolUsed = Object.keys(drugs).filter(k => parseFloat(drugs[k]) > 0 && !protocolKeys.includes(k));
 
           return (
             <>
-              {protocolKeys.length > 0 && (
+              {protocolKeys.length > 0 && !hasDrugsEntered && (
+                <button onClick={() => { setDrugs({ ...protocolState.drugs }); setDrugTimes(protocolState.drugTimes || {}); }}
+                  style={{width:'100%',padding:'10px 14px',marginBottom:10,background:'linear-gradient(135deg,rgba(139,127,168,0.12),rgba(107,127,153,0.08))',
+                    border:'1px dashed var(--purple)',borderRadius:10,color:'var(--purple)',fontSize:'0.88em',fontWeight:500,cursor:'pointer',transition:'all 0.2s'}}>
+                  📋 填入今日菜單（{protocolKeys.map(k => DRUGS.find(x=>x.key===k)?.label).filter(Boolean).join('、')})
+                </button>
+              )}
+              {protocolKeys.length > 0 && hasDrugsEntered && (
                 <div style={{marginBottom:10}}>
-                  <div style={{fontSize:'0.75em',color:'var(--purple)',marginBottom:6}}>📋 固定菜單（自動帶入）</div>
+                  <div style={{fontSize:'0.75em',color:'var(--purple)',marginBottom:6}}>📋 今日用藥</div>
                   {protocolKeys.map(dk => {
                     const d = DRUGS.find(x => x.key === dk);
                     if (!d) return null;
@@ -5306,7 +5298,7 @@ function MorePage({ data, updateData }) {
       <AutoSleepImport data={data} updateData={updateData} />
 
       <div className="card" style={{fontSize:'0.78em',color:'var(--text2)'}}>
-        用藥追蹤 App v9.0 — 血液驗血趨勢圖 + 智能衝突解決 + 移動響應式設計<br/>
+        用藥追蹤 App v9.1 — 修正自動填入 + 驗血趨勢圖 + 衝突解決 + 響應式<br/>
         本工具僅供個人紀錄用途，不構成醫療建議。
       </div>
     </div>
