@@ -2147,6 +2147,7 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
   // Injection site rotation
   const [injectionSite, setInjectionSite] = useState(entry.injectionSite || '');
   const [noInjection, setNoInjection] = useState(entry.noInjection || false);
+  const [noPeptide, setNoPeptide] = useState(entry.noPeptide || false);
   // Collapsible drug categories (only show used + testosterone by default)
   const [expandedCats, setExpandedCats] = useState(() => {
     const used = new Set();
@@ -2170,6 +2171,7 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
     setSleepImportMsg('');
     setInjectionSite(e.injectionSite || '');
     setNoInjection(e.noInjection || false);
+    setNoPeptide(e.noPeptide || false);
     setMorningScores(e.morningScores || {});
     setEveningScores(e.eveningScores || {});
     setAdhocSymptoms(e.adhocSymptoms || []);
@@ -2274,8 +2276,8 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
     const cleanEvening = hasEvening ? eveningScores : undefined;
     const cleanAdhoc = hasAdhoc ? adhocSymptoms : undefined;
     const cleanSymNote = symptomNote.trim() || undefined;
-    const newData = { ...data, [selectedDate]: { ...existing, drugs: cleanDrugs, drugTimes: cleanTimes, symptoms, note, sleep: cleanSleep, weight: cleanWeight, injectionSite: cleanSite, morningScores: cleanMorning, eveningScores: cleanEvening, adhocSymptoms: cleanAdhoc, symptomNote: cleanSymNote, noInjection: noInjection || undefined, updatedAt: new Date().toISOString() } };
-    if (!hasAnySymptoms && !Object.keys(cleanDrugs).length && !note && !existing.hasPhotos && !hasSleep && !cleanWeight && !cleanSite && !hasMorning && !hasEvening && !hasAdhoc && !cleanSymNote && !noInjection) delete newData[selectedDate];
+    const newData = { ...data, [selectedDate]: { ...existing, drugs: cleanDrugs, drugTimes: cleanTimes, symptoms, note, sleep: cleanSleep, weight: cleanWeight, injectionSite: cleanSite, morningScores: cleanMorning, eveningScores: cleanEvening, adhocSymptoms: cleanAdhoc, symptomNote: cleanSymNote, noInjection: noInjection || undefined, noPeptide: noPeptide || undefined, updatedAt: new Date().toISOString() } };
+    if (!hasAnySymptoms && !Object.keys(cleanDrugs).length && !note && !existing.hasPhotos && !hasSleep && !cleanWeight && !cleanSite && !hasMorning && !hasEvening && !hasAdhoc && !cleanSymNote && !noInjection && !noPeptide) delete newData[selectedDate];
     updateData(newData);
     setSaveStatus('saved');
     setTimeout(() => setSaveStatus(''), 1500);
@@ -2723,9 +2725,27 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
 
           {/* === Peptide Section (always visible, independent of noInjection) === */}
           <div style={{marginTop:12,paddingTop:12,borderTop:'1px dashed var(--border)'}}>
-            <div style={{fontSize:'0.82em',color:'var(--green)',fontWeight:600,marginBottom:8}}>🧬 肽類 Peptides（不受休息日影響）</div>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+              <div style={{fontSize:'0.82em',color:'var(--green)',fontWeight:600}}>🧬 肽類 Peptides</div>
+              <button onClick={() => {
+                if (!noPeptide) {
+                  // Clear peptide drugs
+                  const kept = {}; const keptTimes = {};
+                  Object.entries(drugs).forEach(([k,v]) => { const d = DRUGS.find(x=>x.key===k); if(d && !PEPTIDE_CATS.includes(d.cat)) { kept[k]=v; if(drugTimes[k]) keptTimes[k]=drugTimes[k]; } });
+                  setDrugs(kept); setDrugTimes(keptTimes);
+                }
+                setNoPeptide(!noPeptide);
+              }}
+                style={{padding:'5px 12px',borderRadius:10,
+                  border: noPeptide ? '2px solid var(--green)' : '1px solid var(--border)',
+                  background: noPeptide ? 'rgba(122,158,142,0.12)' : 'var(--card2)',
+                  color: noPeptide ? 'var(--green)' : 'var(--text2)',
+                  fontSize:'0.75em',fontWeight: noPeptide ? 600 : 400,cursor:'pointer',transition:'all 0.2s'}}>
+                {noPeptide ? '✅ 今日休息' : '🚫 今日沒打'}
+              </button>
+            </div>
             {/* Auto-fill peptide protocol */}
-            {peptideProtocolKeys.length > 0 && !peptideProtocolKeys.some(k => parseFloat(drugs[k]) > 0) && (
+            {!noPeptide && peptideProtocolKeys.length > 0 && !peptideProtocolKeys.some(k => parseFloat(drugs[k]) > 0) && (
               <button onClick={() => {
                 const pepDrugs = {}; const pepTimes = {};
                 peptideProtocolKeys.forEach(k => { pepDrugs[k] = protocolState.drugs[k]; if(protocolState.drugTimes?.[k]) pepTimes[k] = protocolState.drugTimes[k]; });
@@ -2736,7 +2756,7 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
                 📋 填入肽類菜單（{peptideProtocolKeys.map(k => DRUGS.find(x=>x.key===k)?.label).filter(Boolean).join('、')})
               </button>
             )}
-            {DRUGS.filter(d => PEPTIDE_CATS.includes(d.cat)).map(d => {
+            {!noPeptide && DRUGS.filter(d => PEPTIDE_CATS.includes(d.cat)).map(d => {
               const hasVal = drugs[d.key] && parseFloat(drugs[d.key]) > 0;
               const isInProtocol = peptideProtocolKeys.includes(d.key);
               if (!hasVal && !isInProtocol) return null;
@@ -2756,13 +2776,13 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
               );
             })}
             {/* Show all peptides toggle */}
-            {DRUGS.filter(d => PEPTIDE_CATS.includes(d.cat) && !peptideProtocolKeys.includes(d.key) && !(drugs[d.key] && parseFloat(drugs[d.key]) > 0)).length > 0 && (
+            {!noPeptide && DRUGS.filter(d => PEPTIDE_CATS.includes(d.cat) && !peptideProtocolKeys.includes(d.key) && !(drugs[d.key] && parseFloat(drugs[d.key]) > 0)).length > 0 && (
               <button onClick={() => setExpandedCats(prev => { const n = new Set(prev); n.has('peptide') ? n.delete('peptide') : n.add('peptide'); return n; })}
                 style={{width:'100%',padding:'6px',background:'var(--card2)',border:'1px solid var(--border)',borderRadius:8,color:'var(--text2)',fontSize:'0.78em',cursor:'pointer',marginTop:4}}>
                 {expandedCats.has('peptide') ? '收起其他肽類 ▲' : '＋ 其他肽類 ▼'}
               </button>
             )}
-            {expandedCats.has('peptide') && DRUGS.filter(d => PEPTIDE_CATS.includes(d.cat) && !peptideProtocolKeys.includes(d.key) && !(drugs[d.key] && parseFloat(drugs[d.key]) > 0)).map(d => (
+            {!noPeptide && expandedCats.has('peptide') && DRUGS.filter(d => PEPTIDE_CATS.includes(d.cat) && !peptideProtocolKeys.includes(d.key) && !(drugs[d.key] && parseFloat(drugs[d.key]) > 0)).map(d => (
               <div key={d.key} style={{marginBottom:8,paddingLeft:4,marginTop:6}}>
                 <div className="drug-row" style={{flexWrap:'wrap'}}>
                   <div className="drug-label" style={{color:d.color,minWidth:90,fontSize:'0.82em'}}>{d.label}</div>
