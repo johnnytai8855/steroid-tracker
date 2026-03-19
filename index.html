@@ -2555,37 +2555,60 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
           </div>
         )}
 
-        {/* No injection today toggle */}
-        <div style={{marginBottom:10}}>
-          <button onClick={() => { setNoInjection(!noInjection); if (!noInjection) { setDrugs({}); setDrugTimes({}); } }}
-            style={{width:'100%',padding:'10px',borderRadius:10,
-              border: noInjection ? '2px solid var(--green)' : '1px solid var(--border)',
-              background: noInjection ? 'rgba(122,158,142,0.1)' : 'var(--card2)',
-              color: noInjection ? 'var(--green)' : 'var(--text2)',
-              fontSize:'0.88em',fontWeight: noInjection ? 600 : 400,cursor:'pointer',transition:'all 0.2s'}}>
-            {noInjection ? '✅ 今日沒有注射（休息日）' : '🚫 今日沒有打針'}
-          </button>
-        </div>
-
-        {!noInjection && <>
-        {/* Quick fill from protocol */}
+        {/* === Injection Action Buttons === */}
         {(() => {
           const protocolKeys = Object.keys(protocolState.drugs || {}).filter(k => protocolState.drugs[k] > 0);
-          const hasDrugsEntered = Object.values(drugs).some(v => parseFloat(v) > 0);
+          const PEPTIDE_CATS = ['peptide'];
+          const injectionProtocolKeys = protocolKeys.filter(k => { const d = DRUGS.find(x=>x.key===k); return d && !PEPTIDE_CATS.includes(d.cat); });
+          const peptideProtocolKeys = protocolKeys.filter(k => { const d = DRUGS.find(x=>x.key===k); return d && PEPTIDE_CATS.includes(d.cat); });
+          const hasInjectionDrugs = Object.entries(drugs).some(([k,v]) => { const d = DRUGS.find(x=>x.key===k); return d && !PEPTIDE_CATS.includes(d.cat) && parseFloat(v) > 0; });
           const nonProtocolUsed = Object.keys(drugs).filter(k => parseFloat(drugs[k]) > 0 && !protocolKeys.includes(k));
 
-          return (
-            <>
-              {protocolKeys.length > 0 && !hasDrugsEntered && (
-                <button onClick={() => { setDrugs({ ...protocolState.drugs }); setDrugTimes(protocolState.drugTimes || {}); }}
-                  style={{width:'100%',padding:'10px 14px',marginBottom:10,background:'linear-gradient(135deg,rgba(139,127,168,0.12),rgba(107,127,153,0.08))',
-                    border:'1px dashed var(--purple)',borderRadius:10,color:'var(--purple)',fontSize:'0.88em',fontWeight:500,cursor:'pointer',transition:'all 0.2s'}}>
-                  📋 填入今日菜單（{protocolKeys.map(k => DRUGS.find(x=>x.key===k)?.label).filter(Boolean).join('、')})
-                </button>
-              )}
-              {protocolKeys.length > 0 && hasDrugsEntered && (
-                <div style={{marginBottom:10}}>
-                  <div style={{fontSize:'0.75em',color:'var(--purple)',marginBottom:6}}>📋 今日用藥</div>
+          return (<>
+          {/* Two main action buttons */}
+          <div style={{display:'flex',gap:8,marginBottom:10}}>
+            {injectionProtocolKeys.length > 0 && !hasInjectionDrugs && !noInjection && (
+              <button onClick={() => {
+                const injDrugs = {}; const injTimes = {};
+                injectionProtocolKeys.forEach(k => { injDrugs[k] = protocolState.drugs[k]; if(protocolState.drugTimes?.[k]) injTimes[k] = protocolState.drugTimes[k]; });
+                setDrugs(prev => ({...prev, ...injDrugs})); setDrugTimes(prev => ({...prev, ...injTimes})); setNoInjection(false);
+              }}
+                style={{flex:1,padding:'12px 10px',background:'linear-gradient(135deg,rgba(139,127,168,0.15),rgba(107,127,153,0.1))',
+                  border:'2px dashed var(--purple)',borderRadius:12,color:'var(--purple)',fontSize:'0.85em',fontWeight:600,cursor:'pointer',transition:'all 0.2s',lineHeight:1.3}}>
+                💉 填入今日菜單
+              </button>
+            )}
+            <button onClick={() => {
+              if (!noInjection) {
+                // Only clear non-peptide drugs
+                const kept = {}; const keptTimes = {};
+                Object.entries(drugs).forEach(([k,v]) => { const d = DRUGS.find(x=>x.key===k); if(d && PEPTIDE_CATS.includes(d.cat)) { kept[k]=v; if(drugTimes[k]) keptTimes[k]=drugTimes[k]; } });
+                setDrugs(kept); setDrugTimes(keptTimes);
+              }
+              setNoInjection(!noInjection);
+            }}
+              style={{flex: (injectionProtocolKeys.length > 0 && !hasInjectionDrugs && !noInjection) ? 1 : undefined,
+                width: (injectionProtocolKeys.length > 0 && !hasInjectionDrugs && !noInjection) ? undefined : '100%',
+                padding:'12px 10px',borderRadius:12,
+                border: noInjection ? '2px solid var(--green)' : '1px solid var(--border)',
+                background: noInjection ? 'rgba(122,158,142,0.12)' : 'var(--card2)',
+                color: noInjection ? 'var(--green)' : 'var(--text2)',
+                fontSize:'0.85em',fontWeight: noInjection ? 600 : 400,cursor:'pointer',transition:'all 0.2s',lineHeight:1.3}}>
+              {noInjection ? '✅ 今日休息（沒打針）' : '🚫 今日沒打針'}
+            </button>
+          </div>
+
+          {/* Show injection drugs when entered and not rest day */}
+          {!noInjection && hasInjectionDrugs && (
+            <div style={{marginBottom:10}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+                <div style={{fontSize:'0.75em',color:'var(--purple)',fontWeight:500}}>💉 今日注射</div>
+                <button onClick={() => {
+                  const kept = {}; const keptTimes = {};
+                  Object.entries(drugs).forEach(([k,v]) => { const d = DRUGS.find(x=>x.key===k); if(d && PEPTIDE_CATS.includes(d.cat)) { kept[k]=v; if(drugTimes[k]) keptTimes[k]=drugTimes[k]; } });
+                  setDrugs(kept); setDrugTimes(keptTimes);
+                }} style={{background:'none',border:'none',color:'var(--text2)',fontSize:'0.7em',cursor:'pointer',textDecoration:'underline'}}>清除注射</button>
+              </div>
                   {protocolKeys.map(dk => {
                     const d = DRUGS.find(x => x.key === dk);
                     if (!d) return null;
@@ -2628,8 +2651,8 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
                 </div>
               )}
 
-              {/* Non-protocol drugs that are already used today */}
-              {nonProtocolUsed.length > 0 && nonProtocolUsed.map(dk => {
+              {/* Non-protocol non-peptide drugs used today */}
+              {nonProtocolUsed.filter(k => { const d = DRUGS.find(x=>x.key===k); return d && !PEPTIDE_CATS.includes(d.cat); }).map(dk => {
                 const d = DRUGS.find(x => x.key === dk);
                 if (!d) return null;
                 return (
@@ -2648,66 +2671,113 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
                 );
               })}
 
-              {/* Add more drugs (collapsed) */}
-              <button onClick={() => setShowAllDrugs(!showAllDrugs)}
-                style={{width:'100%',padding:'8px',background:'var(--card2)',border:'1px solid var(--border)',borderRadius:8,
-                  color:'var(--text2)',fontSize:'0.82em',cursor:'pointer',marginTop:4}}>
-                {showAllDrugs ? '收起其他藥物 ▲' : '＋ 新增其他藥物 ▼'}
-              </button>
+              {/* Add more non-peptide drugs (collapsed) */}
+              {!noInjection && (
+                <>
+                <button onClick={() => setShowAllDrugs(!showAllDrugs)}
+                  style={{width:'100%',padding:'8px',background:'var(--card2)',border:'1px solid var(--border)',borderRadius:8,
+                    color:'var(--text2)',fontSize:'0.82em',cursor:'pointer',marginTop:4}}>
+                  {showAllDrugs ? '收起其他藥物 ▲' : '＋ 新增其他藥物 ▼'}
+                </button>
 
-              {showAllDrugs && (
-                <div style={{marginTop:8}}>
-                  {DRUG_CATEGORIES.map(cat => {
-                    const catDrugs = DRUGS.filter(d => d.cat === cat.key && !protocolKeys.includes(d.key));
-                    if (!catDrugs.length) return null;
-                    const hasUsed = catDrugs.some(d => drugs[d.key] && parseFloat(drugs[d.key]) > 0);
-                    const isOpen = expandedCats.has(cat.key);
-                    return (
-                      <div key={cat.key} style={{marginBottom:6}}>
-                        <div className="drug-cat-header" onClick={() => setExpandedCats(prev => {
-                          const next = new Set(prev);
-                          next.has(cat.key) ? next.delete(cat.key) : next.add(cat.key);
-                          return next;
-                        })}>
-                          <h4 style={{color: hasUsed ? 'var(--blue)' : 'var(--text2)',fontSize:'0.85em'}}>
-                            {cat.label} {hasUsed && <span style={{fontSize:'0.7em',color:'var(--green)'}}>●</span>}
-                          </h4>
-                          <span className="drug-cat-toggle">{isOpen ? '收起 ▲' : '展開 ▼'}</span>
-                        </div>
-                        {isOpen && catDrugs.map(d => (
-                          <div key={d.key} style={{marginBottom:8,paddingLeft:4}}>
-                            <div className="drug-row" style={{flexWrap:'wrap'}}>
-                              <div className="drug-label" style={{color: d.color,minWidth:90,fontSize:'0.82em'}}>{d.label}</div>
-                              <input className="drug-input" type="number" step="any" placeholder="0"
-                                value={drugs[d.key] || ''} onChange={e => setDrug(d.key, e.target.value)}
-                                inputMode="decimal" style={{flex:'1 1 50px',minWidth:50}} />
-                              <div className="drug-unit" style={{fontSize:'0.75em'}}>{d.unit}</div>
-                              <input type="time" value={drugTimes[d.key] || ''}
-                                onChange={e => setDrugTime(d.key, e.target.value)}
-                                style={{background:'var(--card2)',border:'1px solid var(--border)',borderRadius:8,padding:'5px 6px',color:'var(--text)',fontSize:'0.78em',outline:'none',width:85,flexShrink:0}} />
-                            </div>
-                            {(drugs[d.key] && parseFloat(drugs[d.key]) > 0) && (
-                              <div style={{display:'flex',gap:4,marginTop:3,marginLeft:90,flexWrap:'wrap',alignItems:'center'}}>
-                                {INJECT_PRESETS.map(p => (
-                                  <button key={p.key} onClick={() => setDrugTime(d.key, p.getTime())}
-                                    style={{background:'var(--card2)',border:'1px solid var(--border)',borderRadius:12,padding:'3px 8px',
-                                      color:'var(--text2)',fontSize:'0.68em',cursor:'pointer',whiteSpace:'nowrap'}}>
-                                    {p.icon} {p.label}
-                                  </button>
-                                ))}
-                              </div>
-                            )}
+                {showAllDrugs && (
+                  <div style={{marginTop:8}}>
+                    {DRUG_CATEGORIES.filter(c => !PEPTIDE_CATS.includes(c.key)).map(cat => {
+                      const catDrugs = DRUGS.filter(d => d.cat === cat.key && !protocolKeys.includes(d.key));
+                      if (!catDrugs.length) return null;
+                      const hasUsed = catDrugs.some(d => drugs[d.key] && parseFloat(drugs[d.key]) > 0);
+                      const isOpen = expandedCats.has(cat.key);
+                      return (
+                        <div key={cat.key} style={{marginBottom:6}}>
+                          <div className="drug-cat-header" onClick={() => setExpandedCats(prev => {
+                            const next = new Set(prev);
+                            next.has(cat.key) ? next.delete(cat.key) : next.add(cat.key);
+                            return next;
+                          })}>
+                            <h4 style={{color: hasUsed ? 'var(--blue)' : 'var(--text2)',fontSize:'0.85em'}}>
+                              {cat.label} {hasUsed && <span style={{fontSize:'0.7em',color:'var(--green)'}}>●</span>}
+                            </h4>
+                            <span className="drug-cat-toggle">{isOpen ? '收起 ▲' : '展開 ▼'}</span>
                           </div>
-                        ))}
-                      </div>
-                    );
-                  })}
-                </div>
+                          {isOpen && catDrugs.map(d => (
+                            <div key={d.key} style={{marginBottom:8,paddingLeft:4}}>
+                              <div className="drug-row" style={{flexWrap:'wrap'}}>
+                                <div className="drug-label" style={{color: d.color,minWidth:90,fontSize:'0.82em'}}>{d.label}</div>
+                                <input className="drug-input" type="number" step="any" placeholder="0"
+                                  value={drugs[d.key] || ''} onChange={e => setDrug(d.key, e.target.value)}
+                                  inputMode="decimal" style={{flex:'1 1 50px',minWidth:50}} />
+                                <div className="drug-unit" style={{fontSize:'0.75em'}}>{d.unit}</div>
+                                <input type="time" value={drugTimes[d.key] || ''}
+                                  onChange={e => setDrugTime(d.key, e.target.value)}
+                                  style={{background:'var(--card2)',border:'1px solid var(--border)',borderRadius:8,padding:'5px 6px',color:'var(--text)',fontSize:'0.78em',outline:'none',width:85,flexShrink:0}} />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                </>
               )}
+
+          {/* === Peptide Section (always visible, independent of noInjection) === */}
+          <div style={{marginTop:12,paddingTop:12,borderTop:'1px dashed var(--border)'}}>
+            <div style={{fontSize:'0.82em',color:'var(--green)',fontWeight:600,marginBottom:8}}>🧬 肽類 Peptides（不受休息日影響）</div>
+            {/* Auto-fill peptide protocol */}
+            {peptideProtocolKeys.length > 0 && !peptideProtocolKeys.some(k => parseFloat(drugs[k]) > 0) && (
+              <button onClick={() => {
+                const pepDrugs = {}; const pepTimes = {};
+                peptideProtocolKeys.forEach(k => { pepDrugs[k] = protocolState.drugs[k]; if(protocolState.drugTimes?.[k]) pepTimes[k] = protocolState.drugTimes[k]; });
+                setDrugs(prev => ({...prev, ...pepDrugs})); setDrugTimes(prev => ({...prev, ...pepTimes}));
+              }}
+                style={{width:'100%',padding:'8px 12px',marginBottom:8,background:'rgba(122,158,142,0.08)',
+                  border:'1px dashed var(--green)',borderRadius:10,color:'var(--green)',fontSize:'0.82em',cursor:'pointer'}}>
+                📋 填入肽類菜單（{peptideProtocolKeys.map(k => DRUGS.find(x=>x.key===k)?.label).filter(Boolean).join('、')})
+              </button>
+            )}
+            {DRUGS.filter(d => PEPTIDE_CATS.includes(d.cat)).map(d => {
+              const hasVal = drugs[d.key] && parseFloat(drugs[d.key]) > 0;
+              const isInProtocol = peptideProtocolKeys.includes(d.key);
+              if (!hasVal && !isInProtocol) return null;
+              return (
+                <div key={d.key} style={{marginBottom:8,paddingLeft:4}}>
+                  <div className="drug-row" style={{flexWrap:'wrap'}}>
+                    <div className="drug-label" style={{color:d.color,minWidth:90,fontSize:'0.82em'}}>{d.label}</div>
+                    <input className="drug-input" type="number" step="any" placeholder="0"
+                      value={drugs[d.key] || ''} onChange={e => setDrug(d.key, e.target.value)}
+                      inputMode="decimal" style={{flex:'1 1 50px',minWidth:50}} />
+                    <div className="drug-unit" style={{fontSize:'0.75em'}}>{d.unit}</div>
+                    <input type="time" value={drugTimes[d.key] || ''}
+                      onChange={e => setDrugTime(d.key, e.target.value)}
+                      style={{background:'var(--card2)',border:'1px solid var(--border)',borderRadius:8,padding:'5px 6px',color:'var(--text)',fontSize:'0.78em',outline:'none',width:85,flexShrink:0}} />
+                  </div>
+                </div>
+              );
+            })}
+            {/* Show all peptides toggle */}
+            {DRUGS.filter(d => PEPTIDE_CATS.includes(d.cat) && !peptideProtocolKeys.includes(d.key) && !(drugs[d.key] && parseFloat(drugs[d.key]) > 0)).length > 0 && (
+              <button onClick={() => setExpandedCats(prev => { const n = new Set(prev); n.has('peptide') ? n.delete('peptide') : n.add('peptide'); return n; })}
+                style={{width:'100%',padding:'6px',background:'var(--card2)',border:'1px solid var(--border)',borderRadius:8,color:'var(--text2)',fontSize:'0.78em',cursor:'pointer',marginTop:4}}>
+                {expandedCats.has('peptide') ? '收起其他肽類 ▲' : '＋ 其他肽類 ▼'}
+              </button>
+            )}
+            {expandedCats.has('peptide') && DRUGS.filter(d => PEPTIDE_CATS.includes(d.cat) && !peptideProtocolKeys.includes(d.key) && !(drugs[d.key] && parseFloat(drugs[d.key]) > 0)).map(d => (
+              <div key={d.key} style={{marginBottom:8,paddingLeft:4,marginTop:6}}>
+                <div className="drug-row" style={{flexWrap:'wrap'}}>
+                  <div className="drug-label" style={{color:d.color,minWidth:90,fontSize:'0.82em'}}>{d.label}</div>
+                  <input className="drug-input" type="number" step="any" placeholder="0"
+                    value={drugs[d.key] || ''} onChange={e => setDrug(d.key, e.target.value)}
+                    inputMode="decimal" style={{flex:'1 1 50px',minWidth:50}} />
+                  <div className="drug-unit" style={{fontSize:'0.75em'}}>{d.unit}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
             </>
           );
         })()}
-        </>}
       </div>
 
       {/* Injection Site Rotation */}
@@ -5298,7 +5368,7 @@ function MorePage({ data, updateData }) {
       <AutoSleepImport data={data} updateData={updateData} />
 
       <div className="card" style={{fontSize:'0.78em',color:'var(--text2)'}}>
-        用藥追蹤 App v9.1 — 修正自動填入 + 驗血趨勢圖 + 衝突解決 + 響應式<br/>
+        用藥追蹤 App v9.2 — 注射/肽類分離 + 不再自動填入 + 驗血趨勢圖<br/>
         本工具僅供個人紀錄用途，不構成醫療建議。
       </div>
     </div>
