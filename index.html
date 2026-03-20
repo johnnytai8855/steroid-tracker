@@ -2611,7 +2611,7 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
                   setDrugs(kept); setDrugTimes(keptTimes);
                 }} style={{background:'none',border:'none',color:'var(--text2)',fontSize:'0.7em',cursor:'pointer',textDecoration:'underline'}}>清除注射</button>
               </div>
-                  {protocolKeys.map(dk => {
+                  {injectionProtocolKeys.map(dk => {
                     const d = DRUGS.find(x => x.key === dk);
                     if (!d) return null;
                     const missed = getMissedInjectionInfo(data, d.key, selectedDate);
