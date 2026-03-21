@@ -280,6 +280,20 @@ body{font-family:'Noto Sans TC',-apple-system,'Segoe UI',system-ui,sans-serif;ba
 .toast.warning{background:var(--orange);color:#fff}
 @keyframes toastIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
 @keyframes toastOut{from{opacity:1}to{opacity:0}}
+.radar-container{position:relative;width:100%;max-width:280px;margin:0 auto 16px}
+.overall-score-circle{width:80px;height:80px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;margin:0 auto 12px;border:3px solid var(--purple);background:var(--card2)}
+.overall-score-circle .score-num{font-size:1.6em;font-weight:700;color:var(--purple);line-height:1}
+.overall-score-circle .score-label{font-size:0.55em;color:var(--text2)}
+.trend-arrow{font-size:0.75em;margin-left:6px}
+.trend-arrow.up{color:var(--green)}
+.trend-arrow.down{color:var(--red)}
+.trend-arrow.flat{color:var(--text2)}
+.drug-corr-section{margin-top:14px;padding:10px 12px;background:var(--card2);border-radius:10px;border:1px solid var(--border)}
+.drug-corr-item{display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:0.8em}
+.drug-corr-item .corr-drug{color:var(--purple);font-weight:500}
+.drug-corr-item .corr-effect{font-weight:600}
+.corr-positive{color:var(--green)}
+.corr-negative{color:var(--red)}
 </style>
 </head>
 <body>
@@ -1123,7 +1137,9 @@ const compressImage = (file, maxWidth = 480, quality = 0.6) => {
 // === Calibration / Learning System ===
 // Stores user subjective ratings and computes adaptive offsets
 const CALIB_KEY = 'ai_calibration';
-const CALIB_METRICS = ['pumpScore', 'definitionScore', 'waterScore'];
+const CALIB_METRICS_FACE = ['jawlineScore', 'puffinessScore', 'skinQualityScore', 'faceLeanScore'];
+const CALIB_METRICS_BODY = ['pumpScore', 'vTaperScore', 'muscleDefScore', 'vascularityScore', 'bodyCompScore'];
+const CALIB_METRICS = ['pumpScore', 'definitionScore', 'waterScore']; // keep for backward compat
 // User rates on 5-point scale: maps to score adjustments
 // 1=很低 2=偏低 3=準確 4=偏高 5=很高
 // If user says AI is "偏高" (4), we reduce future scores; "偏低" (2), we increase
@@ -1170,9 +1186,11 @@ const applyCalibration = (rawScores, photoType) => {
   const cal = loadCalibration();
   const offsets = cal.offsets[photoType] || {};
   const calibrated = { ...rawScores };
-  CALIB_METRICS.forEach(m => {
-    if (offsets[m]) {
-      calibrated[m] = Math.min(100, Math.max(0, (calibrated[m] || 0) + offsets[m]));
+  // Apply offsets for both old and new metrics
+  const allMetrics = [...new Set([...CALIB_METRICS, ...CALIB_METRICS_FACE, ...CALIB_METRICS_BODY])];
+  allMetrics.forEach(m => {
+    if (offsets[m] && calibrated[m] !== undefined) {
+      calibrated[m] = Math.min(100, Math.max(0, calibrated[m] + offsets[m]));
     }
   });
   // Recalculate labels based on calibrated scores
@@ -1798,7 +1816,7 @@ const analyzePhoto = (dataUrl, type) => {
     const img = new Image();
     img.onload = () => {
       const canvas = document.createElement('canvas');
-      const size = 300; // higher res for better analysis
+      const size = 300;
       let w = img.width, h = img.height;
       if (w > h) { h = (size / w) * h; w = size; } else { w = (size / h) * w; h = size; }
       canvas.width = w; canvas.height = h;
@@ -1811,7 +1829,6 @@ const analyzePhoto = (dataUrl, type) => {
       // --- Global stats ---
       let totalR = 0, totalG = 0, totalB = 0, totalBright = 0;
       let skinPixels = 0, rednessSum = 0;
-      // Per-pixel brightness array for edge/contrast analysis
       const brightMap = new Float32Array(n);
 
       for (let i = 0; i < pixels.length; i += 4) {
@@ -1832,15 +1849,13 @@ const analyzePhoto = (dataUrl, type) => {
       const skinRatio = skinPixels / n;
       const avgRedness = skinPixels > 0 ? rednessSum / skinPixels : 0;
 
-      // --- Edge detection (Sobel-like) for muscle definition ---
-      // More edges in skin area = more visible muscle lines/definition
+      // --- Edge detection (Sobel) ---
       let edgeSum = 0, edgeCount = 0;
       let skinEdgeSum = 0, skinEdgeCount = 0;
       const edgeMap = new Float32Array(n);
       for (let y = 1; y < h - 1; y++) {
         for (let x = 1; x < w - 1; x++) {
           const idx = y * w + x;
-          // Sobel gradient magnitude
           const gx = -brightMap[(y-1)*w+(x-1)] - 2*brightMap[y*w+(x-1)] - brightMap[(y+1)*w+(x-1)]
                      + brightMap[(y-1)*w+(x+1)] + 2*brightMap[y*w+(x+1)] + brightMap[(y+1)*w+(x+1)];
           const gy = -brightMap[(y-1)*w+(x-1)] - 2*brightMap[(y-1)*w+x] - brightMap[(y-1)*w+(x+1)]
@@ -1849,7 +1864,6 @@ const analyzePhoto = (dataUrl, type) => {
           edgeMap[idx] = mag;
           edgeSum += mag;
           edgeCount++;
-          // Check if this pixel is skin-colored
           const pi = idx * 4;
           const r = pixels[pi], g = pixels[pi+1], b = pixels[pi+2];
           if (r > 80 && g > 40 && b > 20 && r > g && r > b && (r-g) > 10 && brightMap[idx] > 50 && brightMap[idx] < 230) {
@@ -1861,9 +1875,7 @@ const analyzePhoto = (dataUrl, type) => {
       const avgEdge = edgeCount > 0 ? edgeSum / edgeCount : 0;
       const avgSkinEdge = skinEdgeCount > 0 ? skinEdgeSum / skinEdgeCount : 0;
 
-      // --- Region analysis for body photos ---
-      // Split into top/middle/bottom thirds
-      const thirdH = Math.floor(h / 3);
+      // --- Region analysis helper ---
       const regionStats = (startY, endY) => {
         let rSum = 0, bSum = 0, brSum = 0, cnt = 0, eSum = 0, skCnt = 0;
         for (let y = startY; y < endY; y++) {
@@ -1879,12 +1891,12 @@ const analyzePhoto = (dataUrl, type) => {
         }
         return { avgBright: brSum/cnt, avgEdge: eSum/cnt, skinRatio: skCnt/cnt, avgR: rSum/cnt, avgB: bSum/cnt };
       };
+      const thirdH = Math.floor(h / 3);
       const topRegion = regionStats(0, thirdH);
       const midRegion = regionStats(thirdH, thirdH * 2);
       const botRegion = regionStats(thirdH * 2, h);
 
-      // --- Local contrast (for pump detection) ---
-      // High local contrast in skin = vascularity/pump; low = flat
+      // --- Local contrast (for pump/vascularity) ---
       let contrastSum = 0, contrastCount = 0;
       const blockSize = 8;
       for (let by = 0; by < h - blockSize; by += blockSize) {
@@ -1909,7 +1921,7 @@ const analyzePhoto = (dataUrl, type) => {
       }
       const localContrast = contrastCount > 0 ? contrastSum / contrastCount : 0;
 
-      // --- Brightness variance in skin (smooth=水腫, textured=definition) ---
+      // --- Brightness variance ---
       let brightVarSum = 0, brightVarCnt = 0;
       for (let i = 0; i < n; i++) {
         const pi = i * 4;
@@ -1921,60 +1933,173 @@ const analyzePhoto = (dataUrl, type) => {
       }
       const skinBrightVar = brightVarCnt > 0 ? Math.sqrt(brightVarSum / brightVarCnt) : 0;
 
+      // --- Helper: zone-based analysis ---
+      const zoneStats = (y1, y2, x1, x2) => {
+        let eSum = 0, eCnt = 0, brSum = 0, brCnt = 0, skCnt = 0, totalCnt = 0;
+        for (let y = y1; y < y2; y++) {
+          for (let x = x1; x < x2; x++) {
+            const idx = y * w + x;
+            const pi = idx * 4;
+            const r = pixels[pi], g = pixels[pi+1], b = pixels[pi+2];
+            eSum += edgeMap[idx] || 0;
+            eCnt++;
+            brSum += brightMap[idx];
+            brCnt++;
+            totalCnt++;
+            if (r > 80 && g > 40 && b > 20 && r > g && r > b && (r-g) > 10 && brightMap[idx] > 50 && brightMap[idx] < 230) skCnt++;
+          }
+        }
+        return { avgEdge: eCnt > 0 ? eSum / eCnt : 0, avgBright: brCnt > 0 ? brSum / brCnt : 0, skinRatio: totalCnt > 0 ? skCnt / totalCnt : 0 };
+      };
+
       // === Compute scores ===
       const brightnessScore = Math.min(100, (avgBright / 180) * 100);
       const rednessScore = Math.min(100, avgRedness * 300);
-      const puffScore = Math.min(100, skinRatio * 200);
-      const swellingIndex = Math.round(brightnessScore * 0.3 + rednessScore * 0.4 + puffScore * 0.3);
       const warmth = Math.round(((avgR - avgB) / 255) * 100 + 50);
 
-      // Muscle definition: edge density in skin areas (0-100)
-      // avgSkinEdge typically 5-50 range
-      const definitionScore = Math.min(100, Math.round((avgSkinEdge / 35) * 100));
+      if (type === 'face') {
+        // === FACE ANALYSIS ===
+        // Zones: forehead (0-20%), eyes (20-38%), cheeks (38-62%), jaw (62-85%)
+        const h1 = Math.floor(h * 0.20);
+        const h2 = Math.floor(h * 0.38);
+        const h3 = Math.floor(h * 0.62);
+        const h4 = Math.floor(h * 0.85);
+        const xCenter60 = Math.floor((w * 0.2));
+        const xCenter60End = Math.floor((w * 0.8));
+        const xCenter70 = Math.floor((w * 0.15));
+        const xCenter70End = Math.floor((w * 0.85));
 
-      // Pump score: local contrast + edge density (higher = more pumped/vascular)
-      // localContrast typically 20-100
-      const pumpRaw = (localContrast / 80) * 50 + (avgSkinEdge / 30) * 30 + (skinBrightVar / 40) * 20;
-      const pumpScore = Math.min(100, Math.max(0, Math.round(pumpRaw)));
+        const jawZone = zoneStats(h4, Math.floor(h * 0.85), xCenter60, xCenter60End);
+        const cheekZone = zoneStats(h2, h3, xCenter70, xCenter70End);
+        const eyeZone = zoneStats(h1, h2, xCenter70, xCenter70End);
 
-      // Water retention (belly area for body) — smooth bright skin in mid region
-      // For face: overall puffiness. For body: mid-region smoothness + brightness
-      let waterScore;
-      if (type === 'body') {
-        // Belly: high brightness + low edge (smooth) + high skin ratio in mid region = water
-        const midSmooth = Math.max(0, 1 - midRegion.avgEdge / 25);
-        const midBright = midRegion.avgBright / 200;
-        const midSkin = midRegion.skinRatio;
-        waterScore = Math.min(100, Math.round((midSmooth * 40 + midBright * 30 + midSkin * 30) * 100));
-      } else {
-        // Face: puffiness = brightness + redness + skin smoothness
+        // jawlineScore: edge density in jaw zone (sharper jawline = more edges)
+        const jawlineScore = Math.min(100, Math.round((jawZone.avgEdge / 30) * 100));
+
+        // puffinessScore (0-100, higher = more puffy/bad): smoothness + brightness in cheek/eye zone
+        const cheekSmooth = Math.max(0, 1 - cheekZone.avgEdge / 25);
+        const eyeSmooth = Math.max(0, 1 - eyeZone.avgEdge / 25);
+        const cheekBright = cheekZone.avgBright / 220;
+        const puffinessScore = Math.min(100, Math.round((cheekSmooth * 40 + eyeSmooth * 30 + cheekBright * 30) * 100));
+
+        // skinQualityScore: color uniformity (lower variance = better)
+        const colorVar = Math.sqrt(Math.pow(avgR - avgG, 2) + Math.pow(avgG - avgB, 2)) / 255;
+        const skinQualityScore = Math.min(100, Math.round((1 - Math.min(1, colorVar / 0.3)) * 100));
+
+        // faceLeanScore: overall contrast in face (higher = more defined/lean)
         const faceSmooth = Math.max(0, 1 - avgSkinEdge / 30);
-        waterScore = Math.min(100, Math.round((faceSmooth * 30 + (avgBright/200) * 35 + skinRatio * 35) * 100));
+        const faceLeanScore = Math.min(100, Math.round((1 - faceSmooth) * 100));
+
+        // overallFaceScore: weighted average
+        const overallFaceScore = Math.round(
+          jawlineScore * 0.25 +
+          (100 - puffinessScore) * 0.30 +  // inverted: lower puffiness is better
+          skinQualityScore * 0.20 +
+          faceLeanScore * 0.25
+        );
+
+        // Legacy compatibility fields
+        const pumpScore = Math.min(100, Math.round((localContrast / 80) * 50 + (avgSkinEdge / 30) * 30 + (skinBrightVar / 40) * 20));
+        const definitionScore = jawlineScore;
+        const waterScore = Math.min(100, puffinessScore);
+        const puffScore = Math.min(100, skinRatio * 200);
+        const swellingIndex = Math.round(brightnessScore * 0.3 + rednessScore * 0.4 + puffScore * 0.3);
+
+        const rawScores = {
+          brightness: Math.round(brightnessScore),
+          redness: Math.round(rednessScore),
+          swellingIndex: Math.min(100, swellingIndex),
+          warmth: Math.min(100, Math.max(0, warmth)),
+          skinRatio: Math.round(skinRatio * 100),
+          pumpScore,
+          definitionScore,
+          waterScore: Math.min(100, waterScore),
+          jawlineScore,
+          puffinessScore,
+          skinQualityScore,
+          faceLeanScore,
+          overallFaceScore,
+          pumpLabel: pumpScore > 65 ? '💪 Pump' : pumpScore > 40 ? '正常' : '😐 Flat',
+          defLabel: definitionScore > 60 ? '✨ 明顯' : definitionScore > 35 ? '普通' : '不明顯',
+          waterLabel: waterScore > 60 ? '💧 偏水' : waterScore > 35 ? '輕微' : '✅ 乾爽',
+          type: 'face',
+        };
+        const calibrated = applyCalibration(rawScores, 'face');
+        calibrated._raw = { pumpScore, definitionScore, waterScore: Math.min(100, waterScore) };
+        resolve(calibrated);
+      } else {
+        // === BODY ANALYSIS ===
+        // Zones: shoulders (10-28%), chest (25-45%), waist (42-65%), lower (65-100%)
+        const h1 = Math.floor(h * 0.10);
+        const h2 = Math.floor(h * 0.28);
+        const h3 = Math.floor(h * 0.25);
+        const h4 = Math.floor(h * 0.45);
+        const h5 = Math.floor(h * 0.42);
+        const h6 = Math.floor(h * 0.65);
+        const h7 = Math.floor(h * 0.65);
+        const h8 = h;
+
+        const shoulderZone = zoneStats(h1, h2, 0, w);
+        const chestZone = zoneStats(h3, h4, 0, w);
+        const waistZone = zoneStats(h5, h6, 0, w);
+        const lowerZone = zoneStats(h7, h8, 0, w);
+
+        // vTaperScore: width ratio of shoulders vs waist (higher = better V-taper)
+        const shoulderWidth = shoulderZone.skinRatio;
+        const waistWidth = waistZone.skinRatio;
+        const vTaperScore = Math.min(100, Math.round((shoulderWidth / Math.max(0.01, waistWidth)) * 50));
+
+        // vascularityScore: fine edge detection in skin (veins = edges)
+        const vascularityScore = Math.min(100, Math.round((avgSkinEdge / 25) * 100));
+
+        // muscleDefScore: edge density in skin areas
+        const muscleDefScore = Math.min(100, Math.round((avgSkinEdge / 35) * 100));
+
+        // bodyCompScore: inverse of smoothness in waist (lower smoothness = more defined = better body comp)
+        const waistSmooth = Math.max(0, 1 - waistZone.avgEdge / 25);
+        const bodyCompScore = Math.min(100, Math.round((1 - waistSmooth) * 100));
+
+        // pumpScore: local contrast in skin
+        const pumpScore = Math.min(100, Math.max(0, Math.round((localContrast / 80) * 50 + (avgSkinEdge / 30) * 30 + (skinBrightVar / 40) * 20)));
+
+        // overallBodyScore: weighted average
+        const overallBodyScore = Math.round(
+          vTaperScore * 0.20 +
+          vascularityScore * 0.15 +
+          muscleDefScore * 0.25 +
+          bodyCompScore * 0.20 +
+          pumpScore * 0.20
+        );
+
+        // Legacy compatibility fields
+        const definitionScore = muscleDefScore;
+        const waterScore = Math.min(100, Math.round((1 - waistSmooth) * 100));
+        const puffScore = Math.min(100, skinRatio * 200);
+        const swellingIndex = Math.round(brightnessScore * 0.3 + rednessScore * 0.4 + puffScore * 0.3);
+
+        const rawScores = {
+          brightness: Math.round(brightnessScore),
+          redness: Math.round(rednessScore),
+          swellingIndex: Math.min(100, swellingIndex),
+          warmth: Math.min(100, Math.max(0, warmth)),
+          skinRatio: Math.round(skinRatio * 100),
+          pumpScore,
+          definitionScore,
+          waterScore: Math.min(100, waterScore),
+          vTaperScore,
+          vascularityScore,
+          muscleDefScore,
+          bodyCompScore,
+          overallBodyScore,
+          pumpLabel: pumpScore > 65 ? '💪 Pump' : pumpScore > 40 ? '正常' : '😐 Flat',
+          defLabel: definitionScore > 60 ? '✨ 明顯' : definitionScore > 35 ? '普通' : '不明顯',
+          waterLabel: waterScore > 60 ? '💧 偏水' : waterScore > 35 ? '輕微' : '✅ 乾爽',
+          type: 'body',
+        };
+        const calibrated = applyCalibration(rawScores, 'body');
+        calibrated._raw = { pumpScore, definitionScore, waterScore: Math.min(100, waterScore) };
+        resolve(calibrated);
       }
-
-      // Flat vs pump label
-      const pumpLabel = pumpScore > 65 ? '💪 Pump' : pumpScore > 40 ? '正常' : '😐 Flat';
-      const defLabel = definitionScore > 60 ? '✨ 明顯' : definitionScore > 35 ? '普通' : '不明顯';
-      const waterLabel = waterScore > 60 ? '💧 偏水' : waterScore > 35 ? '輕微' : '✅ 乾爽';
-
-      const rawScores = {
-        brightness: Math.round(brightnessScore),
-        redness: Math.round(rednessScore),
-        swellingIndex: Math.min(100, swellingIndex),
-        warmth: Math.min(100, Math.max(0, warmth)),
-        skinRatio: Math.round(skinRatio * 100),
-        definitionScore: Math.min(100, definitionScore),
-        pumpScore,
-        waterScore: Math.min(100, waterScore),
-        pumpLabel,
-        defLabel,
-        waterLabel,
-        type: type || 'face',
-      };
-      // Apply learned calibration offsets
-      const calibrated = applyCalibration(rawScores, type || 'face');
-      calibrated._raw = { pumpScore, definitionScore, waterScore: Math.min(100, waterScore) };
-      resolve(calibrated);
     };
     img.src = dataUrl;
   });
@@ -2308,15 +2433,131 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
     const [showCalib, setShowCalib] = useState(false);
     const [calibRatings, setCalibRatings] = useState({});
     const [calibSaved, setCalibSaved] = useState(false);
+    const radarCanvasRef = useRef(null);
+    const radarChartRef = useRef(null);
     const calibStats = getCalibStats();
     const hasCalib = calibStats.count > 0;
 
-    const level = analysis.swellingIndex < 30 ? '正常' : analysis.swellingIndex < 55 ? '輕微' : analysis.swellingIndex < 75 ? '偏高' : '明顯';
-    const levelColor = analysis.swellingIndex < 30 ? 'var(--green)' : analysis.swellingIndex < 55 ? 'var(--blue)' : analysis.swellingIndex < 75 ? 'var(--orange)' : 'var(--red)';
-    const pumpColor = (analysis.pumpScore||0) > 65 ? 'var(--green)' : (analysis.pumpScore||0) > 40 ? 'var(--blue)' : 'var(--orange)';
-    const defColor = (analysis.definitionScore||0) > 60 ? 'var(--green)' : (analysis.definitionScore||0) > 35 ? 'var(--blue)' : 'var(--text2)';
-    const waterColor = (analysis.waterScore||0) > 60 ? 'var(--red)' : (analysis.waterScore||0) > 35 ? 'var(--orange)' : 'var(--green)';
     const isBody = analysis.type === 'body' || title.includes('身');
+
+    // Prepare radar chart data
+    useEffect(() => {
+      if (!radarCanvasRef.current) return;
+
+      let radarData, radarOptions;
+      if (isBody) {
+        radarData = {
+          labels: ['充血感', 'V倒三角', '肌肉線條', '血管明顯度', '體脂狀態'],
+          datasets: [{
+            label: '身材指標',
+            data: [
+              analysis.pumpScore || 0,
+              analysis.vTaperScore || 0,
+              analysis.muscleDefScore || 0,
+              analysis.vascularityScore || 0,
+              analysis.bodyCompScore || 0
+            ],
+            borderColor: '#8b7fa8',
+            backgroundColor: '#8b7fa822',
+            borderWidth: 2,
+            pointRadius: 4,
+            pointBackgroundColor: '#8b7fa8'
+          }]
+        };
+      } else {
+        radarData = {
+          labels: ['下顎線條', '臉部浮腫', '皮膚狀態', '臉部精瘦度'],
+          datasets: [{
+            label: '臉部指標',
+            data: [
+              analysis.jawlineScore || 0,
+              Math.max(0, 100 - (analysis.puffinessScore || 0)),
+              analysis.skinQualityScore || 0,
+              analysis.faceLeanScore || 0
+            ],
+            borderColor: '#8b7fa8',
+            backgroundColor: '#8b7fa822',
+            borderWidth: 2,
+            pointRadius: 4,
+            pointBackgroundColor: '#8b7fa8'
+          }]
+        };
+      }
+
+      radarOptions = {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+          legend: { labels: { color: '#5c5850', font: { size: 10 } } }
+        },
+        scales: {
+          r: {
+            beginAtZero: true,
+            max: 100,
+            ticks: { color: '#8a847b', font: { size: 9 } },
+            grid: { color: '#e8e3dc' }
+          }
+        }
+      };
+
+      if (radarChartRef.current) radarChartRef.current.destroy();
+      radarChartRef.current = new Chart(radarCanvasRef.current, {
+        type: 'radar',
+        data: radarData,
+        options: radarOptions
+      });
+
+      return () => {
+        if (radarChartRef.current) radarChartRef.current.destroy();
+      };
+    }, [isBody, analysis]);
+
+    // Calculate overall score and trend
+    const overall = isBody ? (analysis.overallBodyScore || 0) : (analysis.overallFaceScore || 0);
+    const sevenDayAvg = useMemo(() => {
+      const lastSevenDays = Object.entries(data)
+        .filter(([d]) => d <= date && d > fmt(new Date(parseDate(date).getTime() - 7*24*60*60*1000)))
+        .map(([, dayData]) => isBody ? dayData.bodyAnalysis?.overallBodyScore : dayData.faceAnalysis?.overallFaceScore)
+        .filter(s => s !== undefined);
+      return lastSevenDays.length > 0 ? Math.round(lastSevenDays.reduce((a,b) => a+b, 0) / lastSevenDays.length) : overall;
+    }, [data, date, isBody]);
+    const trend = overall - sevenDayAvg;
+
+    // Drug correlation analysis (last 14 days)
+    const drugCorrelations = useMemo(() => {
+      const daysToCheck = 14;
+      const cutoffDate = fmt(new Date(parseDate(date).getTime() - daysToCheck*24*60*60*1000));
+      const relevantDays = Object.entries(data)
+        .filter(([d]) => d <= date && d > cutoffDate)
+        .map(([d, dayData]) => ({
+          date: d,
+          drugs: dayData.drugs || {},
+          metric: isBody ? dayData.bodyAnalysis?.overallBodyScore : dayData.faceAnalysis?.overallFaceScore
+        }))
+        .filter(d => d.metric !== undefined);
+
+      if (relevantDays.length < 2) return [];
+
+      const drugMetrics = {};
+      DRUGS.forEach(drug => {
+        const withDrug = relevantDays.filter(d => d.drugs[drug.key] && parseFloat(d.drugs[drug.key]) > 0);
+        const withoutDrug = relevantDays.filter(d => !d.drugs[drug.key] || parseFloat(d.drugs[drug.key]) === 0);
+
+        if (withDrug.length >= 2) {
+          const withAvg = withDrug.reduce((a,b) => a + b.metric, 0) / withDrug.length;
+          const withoutAvg = withoutDrug.length > 0 ? withoutDrug.reduce((a,b) => a + b.metric, 0) / withoutDrug.length : 0;
+          const correlation = withAvg - withoutAvg;
+          if (Math.abs(correlation) > 3) {
+            drugMetrics[drug.label] = correlation;
+          }
+        }
+      });
+
+      return Object.entries(drugMetrics)
+        .sort(([,a], [,b]) => Math.abs(b) - Math.abs(a))
+        .slice(0, 3)
+        .map(([label, corr]) => ({ label, corr }));
+    }, [data, date, isBody]);
 
     const ratingOptions = [
       { value: 1, label: 'AI太低' },
@@ -2325,7 +2566,19 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
       { value: 4, label: '偏高' },
       { value: 5, label: 'AI太高' },
     ];
-    const metricLabels = { pumpScore: '充血度', definitionScore: '肌肉線條', waterScore: '水腫程度' };
+
+    const metricLabels = isBody ? {
+      pumpScore: '💪 充血感',
+      vTaperScore: '🔱 V型倒三角',
+      muscleDefScore: '💪 肌肉線條',
+      vascularityScore: '🩸 血管明顯度',
+      bodyCompScore: '📐 體脂狀態'
+    } : {
+      jawlineScore: '✂️ 下顎線條',
+      puffinessScore: '💧 臉部浮腫',
+      skinQualityScore: '✨ 皮膚狀態',
+      faceLeanScore: '📐 臉部精瘦度'
+    };
 
     const handleCalibSave = () => {
       Object.entries(calibRatings).forEach(([metric, rating]) => {
@@ -2334,36 +2587,54 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
       });
       setCalibSaved(true);
       setTimeout(() => setCalibSaved(false), 2000);
-      // Trigger re-analysis
       if (onRecalibrate) onRecalibrate();
     };
 
     return (
       <div className="ai-card">
         <h3>🤖 {title} AI 分析 {hasCalib && <span className="calib-badge">已學習 {calibStats.count} 筆</span>}</h3>
-        {/* Main status badges */}
-        <div style={{display:'flex',justifyContent:'center',gap:10,marginBottom:14,flexWrap:'wrap'}}>
-          <div style={{background:'var(--card2)',borderRadius:10,padding:'8px 14px',textAlign:'center',minWidth:80}}>
-            <div style={{fontSize:'1.4em',fontWeight:700,color:pumpColor}}>{analysis.pumpLabel || (analysis.pumpScore > 65 ? '💪 Pump' : analysis.pumpScore > 40 ? '正常' : '😐 Flat')}</div>
-            <div style={{fontSize:'0.7em',color:'var(--text2)',marginTop:2}}>充血狀態</div>
-          </div>
-          <div style={{background:'var(--card2)',borderRadius:10,padding:'8px 14px',textAlign:'center',minWidth:80}}>
-            <div style={{fontSize:'1.4em',fontWeight:700,color:waterColor}}>{analysis.waterLabel || (analysis.waterScore > 60 ? '💧 偏水' : analysis.waterScore > 35 ? '輕微' : '✅ 乾爽')}</div>
-            <div style={{fontSize:'0.7em',color:'var(--text2)',marginTop:2}}>{isBody ? '腹部水腫' : '臉部水腫'}</div>
-          </div>
-          <div style={{background:'var(--card2)',borderRadius:10,padding:'8px 14px',textAlign:'center',minWidth:80}}>
-            <div style={{fontSize:'1.4em',fontWeight:700,color:defColor}}>{analysis.defLabel || (analysis.definitionScore > 60 ? '✨ 明顯' : analysis.definitionScore > 35 ? '普通' : '不明顯')}</div>
-            <div style={{fontSize:'0.7em',color:'var(--text2)',marginTop:2}}>肌肉線條</div>
-          </div>
+
+        {/* Radar chart */}
+        <div className="radar-container">
+          <canvas ref={radarCanvasRef}></canvas>
         </div>
-        {/* Detailed metrics */}
-        <MetricBar label="💪 充血度 (Pump)" value={analysis.pumpScore||0} color={pumpColor} />
-        <MetricBar label="📐 肌肉線條" value={analysis.definitionScore||0} color={defColor} />
-        <MetricBar label="💧 水腫程度" value={analysis.waterScore||0} color={waterColor} />
-        <MetricBar label="🔴 腫脹指數" value={analysis.swellingIndex} color={levelColor} />
-        <MetricBar label="泛紅" value={analysis.redness} color="var(--red)" />
-        <MetricBar label="亮度" value={analysis.brightness} color="var(--blue)" />
-        <MetricBar label="色溫" value={analysis.warmth} color="var(--pink)" />
+
+        {/* Overall score circle */}
+        <div className="overall-score-circle">
+          <div className="score-num">{overall}</div>
+          <div className="score-label">綜合評分</div>
+        </div>
+
+        {/* Trend comparison */}
+        <div style={{textAlign:'center',fontSize:'0.85em',color:'var(--text2)',marginBottom:12}}>
+          vs 7日均值 <span className={`trend-arrow ${trend > 3 ? 'up' : trend < -3 ? 'down' : 'flat'}`}>
+            {trend > 3 ? '↑ +' : trend < -3 ? '↓ ' : '→ '}{Math.abs(trend)}
+          </span>
+        </div>
+
+        {/* Metric bars */}
+        <div style={{marginBottom:12}}>
+          {Object.entries(metricLabels).map(([key, label]) => {
+            const val = analysis[key] || 0;
+            const color = val > 70 ? 'var(--green)' : val > 40 ? 'var(--blue)' : 'var(--orange)';
+            return <MetricBar key={key} label={label} value={val} color={color} />;
+          })}
+        </div>
+
+        {/* Drug correlation section */}
+        {drugCorrelations.length > 0 && (
+          <div className="drug-corr-section">
+            <div style={{fontSize:'0.85em',fontWeight:600,marginBottom:8,color:'var(--purple)'}}>💊 用藥關聯分析</div>
+            {drugCorrelations.map(({label, corr}) => (
+              <div className="drug-corr-item" key={label}>
+                <span className="corr-drug">{label}</span>
+                <span className={`corr-effect ${corr > 0 ? 'corr-positive' : 'corr-negative'}`}>
+                  {corr > 0 ? '+' : ''}{Math.round(corr)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Calibration feedback section */}
         <div className="calib-section">
@@ -2373,7 +2644,7 @@ function RecordPage({ data, updateData, selectedDate, setSelectedDate, saveStatu
           {showCalib && (
             <div>
               <p style={{fontSize:'0.75em',color:'var(--text2)',marginBottom:8}}>告訴 AI 每項判斷跟你的感覺差多少，AI 會學習你的標準：</p>
-              {CALIB_METRICS.map(metric => (
+              {(isBody ? CALIB_METRICS_BODY : CALIB_METRICS_FACE).map(metric => (
                 <div className="calib-row" key={metric}>
                   <span className="calib-label">{metricLabels[metric]}</span>
                   <div className="calib-btns">
@@ -4772,36 +5043,71 @@ function PhotoTimeline({ data, sortedDates }) {
     const datesWithAnalysis = sortedDates.filter(d => data[d]?.faceAnalysis);
     if (datesWithAnalysis.length < 2) { if (chartInst.current) chartInst.current.destroy(); return; }
 
+    // Detect if data has new metrics
+    const hasNewMetrics = datesWithAnalysis.some(d => data[d].faceAnalysis?.jawlineScore !== undefined);
+
     if (chartInst.current) chartInst.current.destroy();
+
+    let datasets;
+    if (hasNewMetrics) {
+      datasets = [{
+        label: '✂️ 下顎線條',
+        data: datesWithAnalysis.map(d => data[d].faceAnalysis.jawlineScore||0),
+        borderColor: '#7a9e8e',
+        backgroundColor: '#7a9e8e22',
+        fill: false, tension: 0.3, pointRadius: 4, pointBackgroundColor: '#7a9e8e'
+      }, {
+        label: '💧 臉部浮腫',
+        data: datesWithAnalysis.map(d => data[d].faceAnalysis.puffinessScore||0),
+        borderColor: '#c4956a',
+        backgroundColor: '#c4956a22',
+        fill: false, tension: 0.3, pointRadius: 3, pointBackgroundColor: '#c4956a'
+      }, {
+        label: '✨ 皮膚狀態',
+        data: datesWithAnalysis.map(d => data[d].faceAnalysis.skinQualityScore||0),
+        borderColor: '#7a94b0',
+        backgroundColor: '#7a94b022',
+        fill: false, tension: 0.3, pointRadius: 3, pointBackgroundColor: '#7a94b0'
+      }, {
+        label: '📐 臉部精瘦度',
+        data: datesWithAnalysis.map(d => data[d].faceAnalysis.faceLeanScore||0),
+        borderColor: '#8b7fa8',
+        backgroundColor: '#8b7fa822',
+        fill: false, tension: 0.3, pointRadius: 3, pointBackgroundColor: '#8b7fa8'
+      }];
+    } else {
+      datasets = [{
+        label: '💪 充血度',
+        data: datesWithAnalysis.map(d => data[d].faceAnalysis.pumpScore||0),
+        borderColor: '#7a9e8e',
+        backgroundColor: '#7a9e8e22',
+        fill: false, tension: 0.3, pointRadius: 4, pointBackgroundColor: '#7a9e8e'
+      }, {
+        label: '📐 線條',
+        data: datesWithAnalysis.map(d => data[d].faceAnalysis.definitionScore||0),
+        borderColor: '#7a94b0',
+        backgroundColor: '#7a94b022',
+        fill: false, tension: 0.3, pointRadius: 3, pointBackgroundColor: '#7a94b0'
+      }, {
+        label: '💧 水腫',
+        data: datesWithAnalysis.map(d => data[d].faceAnalysis.waterScore||0),
+        borderColor: '#c4956a',
+        backgroundColor: '#c4956a22',
+        fill: false, tension: 0.3, pointRadius: 3, pointBackgroundColor: '#c4956a'
+      }, {
+        label: '腫脹指數',
+        data: datesWithAnalysis.map(d => data[d].faceAnalysis.swellingIndex),
+        borderColor: '#8b7fa8',
+        backgroundColor: '#8b7fa822',
+        fill: false, tension: 0.3, pointRadius: 3, pointBackgroundColor: '#8b7fa8', hidden: true
+      }];
+    }
+
     chartInst.current = new Chart(chartRef.current, {
       type: 'line',
       data: {
         labels: datesWithAnalysis,
-        datasets: [{
-          label: '💪 充血度',
-          data: datesWithAnalysis.map(d => data[d].faceAnalysis.pumpScore||0),
-          borderColor: '#7a9e8e',
-          backgroundColor: '#7a9e8e22',
-          fill: false, tension: 0.3, pointRadius: 4, pointBackgroundColor: '#7a9e8e'
-        }, {
-          label: '📐 線條',
-          data: datesWithAnalysis.map(d => data[d].faceAnalysis.definitionScore||0),
-          borderColor: '#7a94b0',
-          backgroundColor: '#7a94b022',
-          fill: false, tension: 0.3, pointRadius: 3, pointBackgroundColor: '#7a94b0'
-        }, {
-          label: '💧 水腫',
-          data: datesWithAnalysis.map(d => data[d].faceAnalysis.waterScore||0),
-          borderColor: '#c4956a',
-          backgroundColor: '#c4956a22',
-          fill: false, tension: 0.3, pointRadius: 3, pointBackgroundColor: '#c4956a'
-        }, {
-          label: '腫脹指數',
-          data: datesWithAnalysis.map(d => data[d].faceAnalysis.swellingIndex),
-          borderColor: '#8b7fa8',
-          backgroundColor: '#8b7fa822',
-          fill: false, tension: 0.3, pointRadius: 3, pointBackgroundColor: '#8b7fa8', hidden: true
-        }]
+        datasets: datasets
       },
       options: {
         responsive: true, maintainAspectRatio: false,
@@ -4842,7 +5148,13 @@ function PhotoTimeline({ data, sortedDates }) {
               <div className="compare-card" key={p.date}>
                 <img src={p.photo} alt={p.date} />
                 <div className="compare-date">{p.date.slice(5)}</div>
-                {p.analysis && <div className="compare-score">{p.analysis.pumpLabel||''} | 線條:{p.analysis.definitionScore||0} | 水:{p.analysis.waterScore||0}</div>}
+                {p.analysis && <div className="compare-score">
+                  {compareType === 'face' && p.analysis.jawlineScore !== undefined
+                    ? `✂️${p.analysis.jawlineScore} 💧${p.analysis.puffinessScore} ✨${p.analysis.skinQualityScore}`
+                    : compareType === 'body' && p.analysis.vTaperScore !== undefined
+                    ? `💪${p.analysis.pumpScore} 🔱${p.analysis.vTaperScore} 📐${p.analysis.muscleDefScore}`
+                    : `${p.analysis.pumpLabel||''} | 線條:${p.analysis.definitionScore||0} | 水:${p.analysis.waterScore||0}`}
+                </div>}
               </div>
             ))}
           </div>
@@ -4871,14 +5183,26 @@ function PhotoTimeline({ data, sortedDates }) {
               <div style={{flex:1,textAlign:'center'}}>
                 <img src={comparePhoto1.photo} alt={compareDate1} style={{width:'100%',borderRadius:10,border:'2px solid var(--border)'}} />
                 <div style={{fontSize:'0.8em',color:'var(--text2)',marginTop:4}}>{compareDate1}</div>
-                {comparePhoto1.analysis && <div style={{fontSize:'0.8em',color:'var(--purple)'}}>{comparePhoto1.analysis.pumpLabel} | 線條:{comparePhoto1.analysis.definitionScore||0} | 水:{comparePhoto1.analysis.waterScore||0}</div>}
+                {comparePhoto1.analysis && <div style={{fontSize:'0.8em',color:'var(--purple)'}}>
+                  {compareType === 'face' && comparePhoto1.analysis.jawlineScore !== undefined
+                    ? `✂️${comparePhoto1.analysis.jawlineScore} 💧${comparePhoto1.analysis.puffinessScore} ✨${comparePhoto1.analysis.skinQualityScore}`
+                    : compareType === 'body' && comparePhoto1.analysis.vTaperScore !== undefined
+                    ? `💪${comparePhoto1.analysis.pumpScore} 🔱${comparePhoto1.analysis.vTaperScore} 📐${comparePhoto1.analysis.muscleDefScore}`
+                    : `${comparePhoto1.analysis.pumpLabel} | 線條:${comparePhoto1.analysis.definitionScore||0} | 水:${comparePhoto1.analysis.waterScore||0}`}
+                </div>}
               </div>
             )}
             {comparePhoto2 && (
               <div style={{flex:1,textAlign:'center'}}>
                 <img src={comparePhoto2.photo} alt={compareDate2} style={{width:'100%',borderRadius:10,border:'2px solid var(--border)'}} />
                 <div style={{fontSize:'0.8em',color:'var(--text2)',marginTop:4}}>{compareDate2}</div>
-                {comparePhoto2.analysis && <div style={{fontSize:'0.8em',color:'var(--purple)'}}>{comparePhoto2.analysis.pumpLabel} | 線條:{comparePhoto2.analysis.definitionScore||0} | 水:{comparePhoto2.analysis.waterScore||0}</div>}
+                {comparePhoto2.analysis && <div style={{fontSize:'0.8em',color:'var(--purple)'}}>
+                  {compareType === 'face' && comparePhoto2.analysis.jawlineScore !== undefined
+                    ? `✂️${comparePhoto2.analysis.jawlineScore} 💧${comparePhoto2.analysis.puffinessScore} ✨${comparePhoto2.analysis.skinQualityScore}`
+                    : compareType === 'body' && comparePhoto2.analysis.vTaperScore !== undefined
+                    ? `💪${comparePhoto2.analysis.pumpScore} 🔱${comparePhoto2.analysis.vTaperScore} 📐${comparePhoto2.analysis.muscleDefScore}`
+                    : `${comparePhoto2.analysis.pumpLabel} | 線條:${comparePhoto2.analysis.definitionScore||0} | 水:${comparePhoto2.analysis.waterScore||0}`}
+                </div>}
               </div>
             )}
           </div>
@@ -4991,7 +5315,13 @@ function PhotoTimelinePage({ data, type, setTab }) {
                 <img src={p.photo} alt={p.date} loading="lazy" />
                 <div className="tl-date">
                   {p.date.slice(5)}
-                  {p.analysis && <span style={{display:'block',fontSize:'0.9em'}}>💪{p.analysis.pumpScore||0} 📐{p.analysis.definitionScore||0} 💧{p.analysis.waterScore||0}</span>}
+                  {p.analysis && <span style={{display:'block',fontSize:'0.9em'}}>
+                    {type === 'face' && p.analysis.jawlineScore !== undefined
+                      ? `✂️${p.analysis.jawlineScore} 💧${p.analysis.puffinessScore} ✨${p.analysis.skinQualityScore}`
+                      : type === 'body' && p.analysis.vTaperScore !== undefined
+                      ? `💪${p.analysis.pumpScore} 🔱${p.analysis.vTaperScore} 📐${p.analysis.muscleDefScore}`
+                      : `💪${p.analysis.pumpScore||0} 📐${p.analysis.definitionScore||0} 💧${p.analysis.waterScore||0}`}
+                  </span>}
                 </div>
                 <div className="tl-check">✓</div>
               </div>
@@ -5013,7 +5343,13 @@ function PhotoTimelinePage({ data, type, setTab }) {
                 <img src={p.photo} alt={p.date} />
                 <div className="lb-info">
                   {p.date}
-                  {p.analysis && <><br/>💪 {p.analysis.pumpLabel||''} | 📐 線條:{p.analysis.definitionScore||0} | 💧 水:{p.analysis.waterScore||0}</>}
+                  {p.analysis && <><br/>
+                    {type === 'face' && p.analysis.jawlineScore !== undefined
+                      ? `✂️${p.analysis.jawlineScore} 💧${p.analysis.puffinessScore} ✨${p.analysis.skinQualityScore}`
+                      : type === 'body' && p.analysis.vTaperScore !== undefined
+                      ? `💪${p.analysis.pumpScore} 🔱${p.analysis.vTaperScore} 📐${p.analysis.muscleDefScore}`
+                      : `💪 ${p.analysis.pumpLabel||''} | 📐 線條:${p.analysis.definitionScore||0} | 💧 水:${p.analysis.waterScore||0}`}
+                  </>}
                 </div>
               </div>
             ))}
